@@ -1,1 +1,59 @@
-{"name":"TF-ADMIN-02 Get vacancy","nodes":[{"parameters":{"httpMethod":"GET","path":"admin/vacancies/:id","responseMode":"responseNode","options":{}},"id":"webhook","name":"GET vacancy","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[0,0],"webhookId":"tf-admin-get-vacancy"},{"parameters":{"operation":"executeQuery","query":"SELECT talentflow.admin_get_vacancy($1::uuid) AS data","options":{"queryReplacement":"={{ [$json.params.id] }}"}},"id":"postgres","name":"PostgreSQL","type":"n8n-nodes-base.postgres","typeVersion":2.6,"position":[240,0]},{"parameters":{"respondWith":"json","responseBody":"={{ { data: $json.data } }}","options":{"responseCode":200,"responseHeaders":{"entries":[{"name":"Access-Control-Allow-Origin","value":"*"}]}}},"id":"response","name":"Response","type":"n8n-nodes-base.respondToWebhook","typeVersion":1.4,"position":[480,0]}],"connections":{"GET vacancy":{"main":[[{"node":"PostgreSQL","type":"main","index":0}]]},"PostgreSQL":{"main":[[{"node":"Response","type":"main","index":0}]]}},"settings":{"executionOrder":"v1"},"active":false,"versionId":"11000000-0000-4000-8000-000000000002"}
+{
+  "name": "TF-ADMIN-02 Get vacancy",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "admin/vacancies/:id",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "GET vacancy",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "tf-admin-get-vacancy"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT talentflow.admin_get_vacancy($1::uuid) AS data",
+        "options": { "queryReplacement": "={{ [$json.params.id] }}" }
+      },
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { data: $json.data } }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }]
+          }
+        }
+      },
+      "id": "response",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [480, 0]
+    }
+  ],
+  "connections": {
+    "GET vacancy": {
+      "main": [[{ "node": "PostgreSQL", "type": "main", "index": 0 }]]
+    },
+    "PostgreSQL": {
+      "main": [[{ "node": "Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "11000000-0000-4000-8000-000000000002"
+}

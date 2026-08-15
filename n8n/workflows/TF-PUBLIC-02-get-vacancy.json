@@ -1,26 +1,26 @@
 {
-  "name": "TF-ADMIN-07 Duplicate vacancy",
+  "name": "TF-PUBLIC-02 Get vacancy detail",
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "admin/vacancies/:id/duplicate",
+        "httpMethod": "GET",
+        "path": "public/vacancies/:id",
         "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook",
-      "name": "POST duplicate",
+      "name": "GET vacancy detail",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [0, 0],
-      "webhookId": "tf-admin-duplicate-vacancy"
+      "webhookId": "tf-public-get-vacancy"
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT talentflow.admin_duplicate_vacancy($1::uuid, $2::varchar) AS data",
+        "query": "SELECT talentflow.public_get_vacancy($1::uuid) AS data",
         "options": {
-          "queryReplacement": "={{ [$json.params.id, $json.body.code] }}"
+          "queryParams": ["={{ $json.params.id }}"]
         }
       },
       "id": "postgres",
@@ -34,7 +34,7 @@
         "respondWith": "json",
         "responseBody": "={{ { data: $json.data } }}",
         "options": {
-          "responseCode": 201,
+          "responseCode": 200,
           "responseHeaders": {
             "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }]
           }
@@ -48,7 +48,7 @@
     }
   ],
   "connections": {
-    "POST duplicate": {
+    "GET vacancy detail": {
       "main": [[{ "node": "PostgreSQL", "type": "main", "index": 0 }]]
     },
     "PostgreSQL": {
@@ -57,5 +57,5 @@
   },
   "settings": { "executionOrder": "v1" },
   "active": false,
-  "versionId": "11000000-0000-4000-8000-000000000007"
+  "versionId": "11000000-0000-4000-8000-000000000101"
 }
