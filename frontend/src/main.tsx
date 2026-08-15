@@ -1872,6 +1872,274 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
   );
 }
 
+function CandidatesList() {
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    request("/api/admin/candidates")
+      .then((result) => setCandidates(Array.isArray(result) ? result : []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <>
+      <PageTitle
+        title="Candidatos"
+        subtitle="Listado de postulaciones procesadas y evaluadas"
+      />
+      {error && <div className="alert error">{error}</div>}
+      <section className="panel table-panel">
+        {loading ? (
+          <p className="loading">Cargando candidatos...</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ticket</th>
+                  <th>Nombre</th>
+                  <th>Vacante</th>
+                  <th>Score</th>
+                  <th>Prioridad</th>
+                  <th>Estado</th>
+                  <th>Postulación</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {candidates.map((c) => (
+                  <tr key={c.id}>
+                    <td>
+                      <strong>{c.ticket}</strong>
+                    </td>
+                    <td>{c.full_name}</td>
+                    <td>{c.vacancy_title}</td>
+                    <td>
+                      <strong>{c.score || "--"}/100</strong>
+                    </td>
+                    <td>
+                      <span className={`tag priority-${String(c.priority || "").toLowerCase()}`}>
+                        {c.priority || "BAJA"}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`state ${String(c.status || "").toLowerCase()}`}>
+                        {c.status || "PENDIENTE_REVISION"}
+                      </span>
+                    </td>
+                    <td>
+                      {c.applied_at
+                        ? new Date(c.applied_at).toLocaleDateString("es-CO")
+                        : "--"}
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => navigate(`/admin/candidatos/${c.id}`)}
+                        className="icon-button"
+                        title="Ver detalle"
+                      >
+                        <FileSearch />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!candidates.length && (
+              <div className="empty-state">
+                <Users />
+                <h2>No hay candidatos</h2>
+                <p>Las postulaciones aparecerán aquí después de ser procesadas.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function CandidateDetail({ id }: { id: string }) {
+  const [candidate, setCandidate] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    request(`/api/admin/candidates/${id}`)
+      .then((result) => setCandidate(result || null))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
+    return (
+      <>
+        <PageTitle title="Cargando..." subtitle="Obteniendo detalles del candidato" />
+        <div className="panel loading-box">Cargando...</div>
+      </>
+    );
+  }
+
+  if (error) {
+    return (
+      <>
+        <PageTitle title="Error" subtitle="No se pudo cargar el candidato" />
+        <div className="alert error">{error}</div>
+      </>
+    );
+  }
+
+  if (!candidate) {
+    return (
+      <>
+        <PageTitle title="No encontrado" subtitle="El candidato solicitado no existe" />
+        <section className="panel empty-state">
+          <FileSearch />
+          <h2>Candidato no encontrado</h2>
+        </section>
+      </>
+    );
+  }
+
+  const habilidades = candidate.habilidades || [];
+  const criterios = candidate.score_breakdown || [];
+  const preguntas = candidate.interview_questions || [];
+
+  return (
+    <>
+      <PageTitle
+        title={candidate.full_name}
+        subtitle={`${candidate.ticket} · ${candidate.vacancy_title}`}
+        action={
+          <button className="secondary" onClick={() => navigate("/admin/candidatos")}>
+            Volver
+          </button>
+        }
+      />
+
+      <div className="detail-grid">
+        <section className="panel">
+          <h2>Información del candidato</h2>
+          <div className="info-block">
+            <div>
+              <span className="label">Nombre</span>
+              <p>{candidate.full_name}</p>
+            </div>
+            <div>
+              <span className="label">Correo</span>
+              <p>{candidate.email}</p>
+            </div>
+            <div>
+              <span className="label">Teléfono</span>
+              <p>{candidate.phone || "--"}</p>
+            </div>
+            <div>
+              <span className="label">Ubicación</span>
+              <p>{candidate.location || "--"}</p>
+            </div>
+            <div>
+              <span className="label">Postulación</span>
+              <p>
+                {candidate.applied_at
+                  ? new Date(candidate.applied_at).toLocaleDateString("es-CO")
+                  : "--"}
+              </p>
+            </div>
+            <div>
+              <span className="label">Experiencia</span>
+              <p>{candidate.experience_years || 0} años</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel">
+          <h2>Evaluación</h2>
+          <div className="score-display">
+            <div className="score-main">
+              <span className="score-value">{candidate.score || 0}</span>
+              <span className="score-max">/100</span>
+            </div>
+            <div>
+              <p className="label">Prioridad</p>
+              <span className={`tag priority-${String(candidate.priority || "").toLowerCase()}`}>
+                {candidate.priority || "BAJA"}
+              </span>
+            </div>
+            <div>
+              <p className="label">Estado</p>
+              <span className={`state ${String(candidate.status || "").toLowerCase()}`}>
+                {candidate.status || "PENDIENTE_REVISION"}
+              </span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {habilidades.length > 0 && (
+        <section className="panel">
+          <h2>Habilidades detectadas</h2>
+          <div className="skills-grid">
+            {habilidades.map((skill: any, idx: number) => (
+              <div key={idx} className="skill-tag">
+                <span>{skill.nombre}</span>
+                {skill.evidencia_laboral && <small>Laboral</small>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {criterios.length > 0 && (
+        <section className="panel">
+          <h2>Desglose del score</h2>
+          <div className="criteria-table">
+            <div className="criteria-header">
+              <span>Criterio</span>
+              <span>Peso</span>
+              <span>Puntos</span>
+              <span>Cumple</span>
+            </div>
+            {criterios.map((crit: any, idx: number) => (
+              <div key={idx} className="criteria-row">
+                <span>{crit.nombre}</span>
+                <span>{crit.peso}</span>
+                <span>{crit.puntos}</span>
+                <span>{crit.cumple ? "✓" : "✗"}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {candidate.resumen && (
+        <section className="panel">
+          <h2>Resumen profesional (IA)</h2>
+          <p className="summary-text">{candidate.resumen}</p>
+        </section>
+      )}
+
+      {preguntas.length > 0 && (
+        <section className="panel">
+          <h2>Preguntas sugeridas para entrevista</h2>
+          <ol className="questions-list">
+            {preguntas.map((q: any, idx: number) => (
+              <li key={idx}>
+                <strong>{q.tema}</strong>
+                <p>{q.pregunta}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+    </>
+  );
+}
+
 function App() {
   const [path, setPath] = useState(location.pathname);
   useEffect(() => {
@@ -1885,6 +2153,7 @@ function App() {
   else if (path === "/admin" || path === "/admin/dashboard") page = <Dashboard />;
   else if (path === "/admin/vacantes") page = <VacancyList />;
   else if (path === "/admin/vacantes/nueva") page = <Wizard />;
+  else if (path === "/admin/candidatos") page = <CandidatesList />;
   else {
     const match = path.match(/^\/vacantes\/([0-9a-f-]+)$/);
     if (match) page = <VacancyDetail id={match[1]} />;
@@ -1894,20 +2163,24 @@ function App() {
       else {
         const adminMatch = path.match(/^\/admin\/vacantes\/([0-9a-f-]+)$/);
         if (adminMatch) page = <Wizard id={adminMatch[1]} />;
-        else
-          page = (
-            <Placeholder
-              title={
-                path.includes("candidatos")
-                  ? "Candidatos"
-                  : path.includes("revision")
+        else {
+          const candMatch = path.match(/^\/admin\/candidatos\/([0-9a-f-]+)$/);
+          if (candMatch) page = <CandidateDetail id={candMatch[1]} />;
+          else
+            page = (
+              <Placeholder
+                title={
+                  path.includes("revision")
                     ? "Revision documental"
                     : path.includes("metricas")
                       ? "Metricas"
-                      : "Configuracion"
-              }
-            />
-          );
+                      : path.includes("configuracion")
+                        ? "Configuracion"
+                        : "Seccion desconocida"
+                }
+              />
+            );
+        }
       }
     }
   }
