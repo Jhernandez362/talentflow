@@ -1,0 +1,28 @@
+{
+  "id": "tf-admin-list-candidates",
+  "name": "TF-ADMIN-08 List candidates",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "GET", "path": "admin/candidates", "responseMode": "responseNode", "options": {} },
+      "id": "webhook", "name": "GET candidates", "type": "n8n-nodes-base.webhook", "typeVersion": 2,
+      "position": [0, 0], "webhookId": "tf-admin-list-candidates"
+    },
+    {
+      "parameters": { "operation": "executeQuery", "query": "SELECT talentflow.admin_list_candidates() AS data", "options": {} },
+      "id": "postgres", "name": "PostgreSQL", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6,
+      "position": [240, 0]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { data: $json.data } }}", "options": { "responseCode": 200, "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } } },
+      "id": "response", "name": "Response", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.4,
+      "position": [480, 0]
+    }
+  ],
+  "connections": {
+    "GET candidates": { "main": [[{ "node": "PostgreSQL", "type": "main", "index": 0 }]] },
+    "PostgreSQL": { "main": [[{ "node": "Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "11000000-0000-4000-8000-000000000008"
+}

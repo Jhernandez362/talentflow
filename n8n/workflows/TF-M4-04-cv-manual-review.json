@@ -1,0 +1,70 @@
+{
+  "id": "tf-m4-cv-manual-review",
+  "name": "TF-M4-04 CV manual review",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "public/applications/manual-review",
+        "responseMode": "responseNode",
+        "options": { "binaryPropertyName": "cv" }
+      },
+      "id": "webhook",
+      "name": "POST manual review",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "tf-public-manual-review"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "cv",
+        "name": "={{ 'manual-' + $json.body.applicationId + '-' + Date.now() + '.pdf' }}",
+        "driveId": { "mode": "list", "value": "My Drive" },
+        "folderId": { "mode": "id", "value": "REPLACE_WITH_PRIVATE_MANUAL_REVIEW_FOLDER_ID" },
+        "options": { "simplifyOutput": true }
+      },
+      "id": "drive",
+      "name": "Upload for manual review",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT talentflow.public_request_manual_review($1::jsonb) AS data",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ applicationId: $('POST manual review').item.json.body.applicationId, authorized: $('POST manual review').item.json.body.authorized, reason: $('POST manual review').item.json.body.reason, driveFileId: $json.id, driveReference: $json.webViewLink || '', originalFilename: $('POST manual review').item.binary.cv.fileName, mimeType: $('POST manual review').item.binary.cv.mimeType, sizeBytes: $('POST manual review').item.binary.cv.fileSize })] }}"
+        }
+      },
+      "id": "record",
+      "name": "Authorize manual review",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { data: $json.data } }}",
+        "options": { "responseCode": 200, "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "response",
+      "name": "Manual review response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [720, 0]
+    }
+  ],
+  "connections": {
+    "POST manual review": { "main": [[{ "node": "Upload for manual review", "type": "main", "index": 0 }]] },
+    "Upload for manual review": { "main": [[{ "node": "Authorize manual review", "type": "main", "index": 0 }]] },
+    "Authorize manual review": { "main": [[{ "node": "Manual review response", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "12000000-0000-4000-8000-000000000404"
+}

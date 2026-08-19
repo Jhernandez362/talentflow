@@ -5,6 +5,7 @@ DECLARE
     base jsonb := jsonb_build_object(
         'title','Prueba Administrativa','code','TF-BOUNDARY','department','Tecnologia',
         'workMode','REMOTE','seniorityLevel','JUNIOR','openings',1,
+        'closesAt','2099-12-31T23:59:59Z',
         'salaryMin','','salaryMax','','salaryCurrency','COP','salaryPeriod','MONTH',
         'responsibleHrUserId','10000000-0000-4000-8000-000000000001'
     );

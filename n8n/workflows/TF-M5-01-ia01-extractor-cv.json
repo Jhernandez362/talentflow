@@ -1,0 +1,114 @@
+{
+  "id": "tf-m5-ia01-extractor-cv",
+  "name": "WF-IA01-EXTRACTOR-CV",
+  "nodes": [
+    {
+      "parameters": { "workflowInputs": { "values": [{ "name": "postulacion_id", "type": "string" }] } },
+      "id": "subworkflow-trigger", "name": "Input postulacion_id",
+      "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1, "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT talentflow.ia01_begin_analysis($1::uuid, $2, $3) AS data",
+        "options": { "queryReplacement": "={{ [$json.postulacion_id, 'google-gemini', 'gemini-3.6-flash'] }}" }
+      },
+      "id": "begin-analysis", "name": "Begin IA-01 analysis",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": { "mode": "id", "value": "={{ $json.data.drive_file_id }}" },
+        "options": { "binaryPropertyName": "data" }
+      },
+      "id": "download-cv", "name": "Download valid CV",
+      "type": "n8n-nodes-base.googleDrive", "typeVersion": 3, "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "operation": "pdf", "binaryPropertyName": "data",
+        "options": { "joinPages": true, "keepSource": "both", "maxPages": 100 }
+      },
+      "id": "extract-text", "name": "Extract CV text",
+      "type": "n8n-nodes-base.extractFromFile", "typeVersion": 1.1, "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Begin IA-01 analysis').first().json.data;\nconst cvText = String($json.text ?? $json.Text ?? '').replace(/\\s+/g, ' ').trim();\nif (cvText.length < 100) throw new Error('AI_INPUT_TEXT_INVALID: el CV previamente validado no contiene texto suficiente');\nconst prompt = `Eres un extractor de información profesional.\\n\\nAnaliza EXCLUSIVAMENTE la información presente en el texto del CV incluido al final.\\n\\nIdentifica y estructura experiencia laboral, empresas, cargos, fechas, duración aproximada, funciones, tecnologías, herramientas, conocimientos, educación, títulos, cursos, certificaciones e idiomas expresamente indicados.\\n\\nNo evalúes si el candidato es bueno o malo. No calcules compatibilidad ni score. No recomiendes contratación ni descarte. No inventes información faltante. Si un dato no se encuentra, utiliza null, false o una colección vacía. No infieras características personales.\\n\\nIGNORA y NO devuelvas edad, género, fotografía, estado civil, nacionalidad, religión, orientación sexual, discapacidad ni características protegidas.\\n\\nLas tecnologías declaradas son contexto secundario. La experiencia declarada y la vacante son contexto, no evidencia del CV. No marques una habilidad declarada como verificada si no aparece realmente en el CV.\\n\\nDistingue habilidades detectadas en el CV de habilidades declaradas solamente en el formulario. Para cada habilidad encontrada indica si existe evidencia dentro de una experiencia laboral concreta. La evidencia laboral es contexto para RRHH y NO modifica ningún score.\\n\\nNo asumas equivalencias tecnológicas no explícitas. Calcula duraciones solo con fechas suficientes. Si son ambiguas usa null y agrega una advertencia. Para experiencia total suma la unión de intervalos laborales con fechas suficientes evitando doble conteo por superposición; si no puede calcularse confiablemente usa null.\\n\\nDevuelve únicamente JSON que cumpla el schema suministrado, sin texto adicional.\\n\\nEXPERIENCIA DECLARADA: ${context.candidate_declared_experience ?? 'null'}\\nHABILIDADES DECLARADAS: ${JSON.stringify(context.candidate_declared_skills ?? [])}\\nVACANTE: ${context.vacancy_title}\\nTEXTO DEL CV:\\n${cvText}`;\nreturn [{ json: { prompt, analysis_id: context.analysis_id } }];"
+      },
+      "id": "prepare-prompt", "name": "Prepare PROMPT-IA-01-v1",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [960, 0]
+    },
+    {
+      "parameters": {
+        "promptType": "define", "text": "={{ $json.prompt }}", "hasOutputParser": true,
+        "batching": { "batchSize": 1, "delayBetweenBatches": 0 }
+      },
+      "id": "ia01", "name": "IA-01 Extractor",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm", "typeVersion": 1.9,
+      "position": [1200, 0], "retryOnFail": true, "maxTries": 3,
+      "waitBetweenTries": 1000, "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelName": "gemini-3.6-flash",
+        "options": { "temperature": 0.1, "maxOutputTokens": 8192 }
+      },
+      "id": "gemini-model", "name": "Gemini 3.6 Flash",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini", "typeVersion": 1.1, "position": [1120, 240]
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"experiencia_total_anios\",\"experiencias\",\"educacion\",\"cursos\",\"certificaciones\",\"idiomas\",\"habilidades\",\"habilidades_declaradas_no_verificadas\",\"advertencias\"],\"properties\":{\"experiencia_total_anios\":{\"type\":[\"number\",\"null\"],\"minimum\":0,\"maximum\":80},\"experiencias\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"empresa\",\"cargo\",\"fecha_inicio\",\"fecha_fin\",\"duracion_meses\",\"funciones\",\"tecnologias\"],\"properties\":{\"id\":{\"type\":\"string\"},\"empresa\":{\"type\":[\"string\",\"null\"]},\"cargo\":{\"type\":[\"string\",\"null\"]},\"fecha_inicio\":{\"type\":[\"string\",\"null\"]},\"fecha_fin\":{\"type\":[\"string\",\"null\"]},\"duracion_meses\":{\"type\":[\"integer\",\"null\"],\"minimum\":0},\"funciones\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"tecnologias\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}},\"educacion\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"titulo\",\"nivel\",\"institucion\",\"fecha\"],\"properties\":{\"titulo\":{\"type\":[\"string\",\"null\"]},\"nivel\":{\"type\":[\"string\",\"null\"]},\"institucion\":{\"type\":[\"string\",\"null\"]},\"fecha\":{\"type\":[\"string\",\"null\"]}}}},\"cursos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"nombre\",\"institucion\",\"fecha\"],\"properties\":{\"nombre\":{\"type\":[\"string\",\"null\"]},\"institucion\":{\"type\":[\"string\",\"null\"]},\"fecha\":{\"type\":[\"string\",\"null\"]}}}},\"certificaciones\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"idiomas\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"habilidades\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"nombre\",\"evidencia_laboral\",\"experiencia_ids\"],\"properties\":{\"nombre\":{\"type\":\"string\"},\"evidencia_laboral\":{\"type\":\"boolean\"},\"experiencia_ids\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}},\"habilidades_declaradas_no_verificadas\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"advertencias\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}",
+        "autoFix": false
+      },
+      "id": "structured-parser", "name": "IA-01 Structured Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured", "typeVersion": 1.3, "position": [1360, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "if ($json.error) return [{ json: { valid: false, error: String($json.error) } }];\nconst data = $json.output ?? $json;\nconst requiredArrays = ['experiencias','educacion','cursos','certificaciones','idiomas','habilidades','habilidades_declaradas_no_verificadas','advertencias'];\nconst prohibited = new Set(['score','compatibilidad','recomendacion','contratar','rechazar','edad','genero','género','fotografia','fotografía','estado_civil','nacionalidad','religion','religión','orientacion_sexual','orientación_sexual','discapacidad']);\nconst walk = value => { if (!value || typeof value !== 'object') return; for (const [key, child] of Object.entries(value)) { if (prohibited.has(key.toLowerCase())) throw new Error(`Campo prohibido: ${key}`); walk(child); } };\ntry {\n  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('La salida no es un objeto JSON');\n  for (const key of requiredArrays) if (!Array.isArray(data[key])) throw new Error(`Campo inválido: ${key}`);\n  if (!(data.experiencia_total_anios === null || (typeof data.experiencia_total_anios === 'number' && data.experiencia_total_anios >= 0 && data.experiencia_total_anios <= 80))) throw new Error('experiencia_total_anios inválida');\n  walk(data);\n  const experienceIds = new Set(data.experiencias.map(exp => exp.id));\n  for (const skill of data.habilidades) for (const id of skill.experiencia_ids || []) if (!experienceIds.has(id)) throw new Error(`Evidencia refiere experiencia inexistente: ${id}`);\n  return [{ json: { valid: true, structured_candidate_data: data, structured_candidate_json: JSON.stringify(data) } }];\n} catch (error) { return [{ json: { valid: false, error: error.message } }]; }"
+      },
+      "id": "validate-output", "name": "Validate IA-01 output",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1480, 0]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "id": "15000000-0000-4000-8000-000000000590", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" } },
+      "id": "output-valid", "name": "Output is valid",
+      "type": "n8n-nodes-base.if", "typeVersion": 2.2, "position": [1720, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery", "query": "SELECT talentflow.ia01_complete_analysis($1::uuid, $2::jsonb) AS data",
+        "options": { "queryReplacement": "={{ [$('Begin IA-01 analysis').first().json.data.analysis_id, $json.structured_candidate_json] }}" }
+      },
+      "id": "record-success", "name": "Record IA-01 success",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [1960, -100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery", "query": "SELECT talentflow.ia01_fail_analysis($1::uuid, $2) AS data",
+        "options": { "queryReplacement": "={{ [$('Begin IA-01 analysis').first().json.data.analysis_id, $json.error || 'Respuesta IA inválida después de 3 intentos'] }}" }
+      },
+      "id": "record-failure", "name": "Record IA-01 failure",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [1960, 100]
+    }
+  ],
+  "connections": {
+    "Input postulacion_id": { "main": [[{ "node": "Begin IA-01 analysis", "type": "main", "index": 0 }]] },
+    "Begin IA-01 analysis": { "main": [[{ "node": "Download valid CV", "type": "main", "index": 0 }]] },
+    "Download valid CV": { "main": [[{ "node": "Extract CV text", "type": "main", "index": 0 }]] },
+    "Extract CV text": { "main": [[{ "node": "Prepare PROMPT-IA-01-v1", "type": "main", "index": 0 }]] },
+    "Prepare PROMPT-IA-01-v1": { "main": [[{ "node": "IA-01 Extractor", "type": "main", "index": 0 }]] },
+    "Gemini 3.6 Flash": { "ai_languageModel": [[{ "node": "IA-01 Extractor", "type": "ai_languageModel", "index": 0 }]] },
+    "IA-01 Structured Output": { "ai_outputParser": [[{ "node": "IA-01 Extractor", "type": "ai_outputParser", "index": 0 }]] },
+    "IA-01 Extractor": { "main": [[{ "node": "Validate IA-01 output", "type": "main", "index": 0 }]] },
+    "Validate IA-01 output": { "main": [[{ "node": "Output is valid", "type": "main", "index": 0 }]] },
+    "Output is valid": { "main": [[{ "node": "Record IA-01 success", "type": "main", "index": 0 }], [{ "node": "Record IA-01 failure", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "15000000-0000-4000-8000-000000000501"
+}

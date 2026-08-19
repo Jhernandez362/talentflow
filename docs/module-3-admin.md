@@ -27,13 +27,16 @@ Asigne esa credencial al nodo `PostgreSQL` de cada workflow y active los siete. 
 
 ```text
 GET  /webhook/admin/vacancies
-GET  /webhook/admin/vacancies/:id
+GET  /webhook/tf-admin-get-vacancy/admin/vacancies/:id
 POST /webhook/admin/vacancies
-PUT  /webhook/admin/vacancies/:id
-POST /webhook/admin/vacancies/:id/publish
-POST /webhook/admin/vacancies/:id/status
-POST /webhook/admin/vacancies/:id/duplicate
+PUT  /webhook/tf-admin-update-vacancy/admin/vacancies/:id
+POST /webhook/tf-admin-publish-vacancy/admin/vacancies/:id/publish
+POST /webhook/tf-admin-status-vacancy/admin/vacancies/:id/status
+POST /webhook/tf-admin-duplicate-vacancy/admin/vacancies/:id/duplicate
 ```
+
+n8n antepone el `webhookId` a los paths que contienen parametros dinamicos
+como `:id`. El proxy de Vite sustituye el prefijo `/api` por `/webhook`.
 
 ## Prueba manual
 

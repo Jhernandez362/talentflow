@@ -64,6 +64,12 @@ type VacancyRow = {
   active_scoring_version?: number;
 };
 
+type ValidationRequirement = {
+  valid: boolean;
+  label: string;
+  step: number;
+};
+
 type PublicVacancy = {
   id: string;
   code: string;
@@ -89,7 +95,51 @@ type PublicVacancy = {
   minimumEducation?: string;
   relatedAcademicArea?: string;
   benefits?: Array<{ name: string; description?: string }>; 
+  requirements?: Array<{ name: string; description?: string; required?: boolean; type?: string }>;
+  desirables?: Array<{ name: string; description?: string }>;
+  educationRequired?: boolean;
 };
+
+function normalizePublicVacancy(source: any): PublicVacancy | null {
+  const vacancy = source?.vacancy ?? source;
+  if (!vacancy?.id) return null;
+
+  return {
+    id: vacancy.id,
+    code: vacancy.code ?? "",
+    title: vacancy.title ?? "",
+    description: vacancy.description ?? "",
+    department: vacancy.department ?? "",
+    location: vacancy.location ?? "",
+    workMode: vacancy.workMode ?? vacancy.work_mode ?? "",
+    contractType: vacancy.contractType ?? vacancy.contract_type ?? "",
+    seniorityLevel: vacancy.seniorityLevel ?? vacancy.seniority_level ?? "",
+    openings: vacancy.openings ?? 1,
+    workday: vacancy.workday ?? "",
+    schedule: vacancy.schedule ?? "",
+    salaryMin: vacancy.salaryMin ?? vacancy.salary_min,
+    salaryMax: vacancy.salaryMax ?? vacancy.salary_max,
+    salaryCurrency: vacancy.salaryCurrency ?? vacancy.salary_currency ?? "COP",
+    salaryPeriod: vacancy.salaryPeriod ?? vacancy.salary_period ?? "MONTH",
+    showSalaryPublicly:
+      vacancy.showSalaryPublicly ?? vacancy.show_salary_publicly ?? false,
+    plannedPublishAt:
+      vacancy.plannedPublishAt ?? vacancy.planned_publish_at ?? "",
+    closesAt: vacancy.closesAt ?? vacancy.closes_at ?? "",
+    expectedStartDate:
+      vacancy.expectedStartDate ?? vacancy.expected_start_date ?? "",
+    minimumExperienceMonths:
+      vacancy.minimumExperienceMonths ?? vacancy.minimum_experience_months,
+    minimumEducation:
+      vacancy.minimumEducation ?? vacancy.minimum_education ?? "NONE",
+    relatedAcademicArea:
+      vacancy.relatedAcademicArea ?? vacancy.related_academic_area ?? "",
+    benefits: source?.benefits ?? vacancy.benefits ?? [],
+    requirements: source?.requirements ?? vacancy.requirements ?? [],
+    desirables: source?.desirables ?? vacancy.desirables ?? [],
+    educationRequired: vacancy.educationRequired ?? vacancy.education_required ?? false,
+  };
+}
 
 const uid = () => crypto.randomUUID();
 const emptyForm = (): VacancyForm => ({
@@ -147,7 +197,7 @@ const steps = [
 ];
 
 async function request(path: string, options?: RequestInit) {
-  const headers = options?.body
+  const headers = options?.body && !(options.body instanceof FormData)
     ? { "Content-Type": "application/json", ...options.headers }
     : options?.headers;
   const response = await fetch(`${API_BASE_PATH}${path}`, {
@@ -338,12 +388,12 @@ function VacancyList() {
       if (type === "duplicate") {
         const code = prompt("Nuevo codigo para la vacante duplicada");
         if (!code) return;
-        await request(`/admin/vacancies/${id}/duplicate`, {
+        await request(`/tf-admin-duplicate-vacancy/admin/vacancies/${id}/duplicate`, {
           method: "POST",
           body: JSON.stringify({ code }),
         });
       } else
-        await request(`/admin/vacancies/${id}/status`, {
+        await request(`/tf-admin-status-vacancy/admin/vacancies/${id}/status`, {
           method: "POST",
           body: JSON.stringify({ status: type }),
         });
@@ -382,6 +432,7 @@ function VacancyList() {
                   <th>Estado</th>
                   <th>Cierre</th>
                   <th>Plazas</th>
+                  <th>Candidatos</th>
                   <th>Score</th>
                   <th>Acciones</th>
                 </tr>
@@ -409,6 +460,7 @@ function VacancyList() {
                         : "--"}
                     </td>
                     <td>{v.openings}</td>
+                    <td>{v.application_count}</td>
                     <td>
                       {v.active_scoring_version
                         ? `v${v.active_scoring_version}`
@@ -543,6 +595,7 @@ function Wizard({ id }: { id?: string }) {
   const [form, setForm] = useState(emptyForm()),
     [step, setStep] = useState(0),
     [saving, setSaving] = useState(false),
+    [hasPublishedScoring, setHasPublishedScoring] = useState(false),
     [message, setMessage] = useState(""),
     [error, setError] = useState("");
   const criteria = form.criteria as Criterion[],
@@ -559,23 +612,55 @@ function Wizard({ id }: { id?: string }) {
     form.closesAt &&
     String(form.closesAt) <= String(form.plannedPublishAt),
   );
-  const minimumValid = Boolean(
-    String(form.title).trim() &&
-    String(form.code).trim() &&
-    form.department &&
-    form.workMode &&
-    form.seniorityLevel &&
-    Number(form.openings) > 0 &&
-    !salaryInvalid &&
-    !datesInvalid,
+  const experienceInvalid = Boolean(
+    (form.minimumExperienceMonths !== "" &&
+      Number(form.minimumExperienceMonths) < 0) ||
+      (form.expectedExperienceMinMonths !== "" &&
+        Number(form.expectedExperienceMinMonths) < 0) ||
+      (form.expectedExperienceMaxMonths !== "" &&
+        Number(form.expectedExperienceMaxMonths) < 0) ||
+      (form.expectedExperienceMinMonths !== "" &&
+        form.expectedExperienceMaxMonths !== "" &&
+        Number(form.expectedExperienceMinMonths) >
+          Number(form.expectedExperienceMaxMonths)),
   );
-  const publishValid = minimumValid && criteria.length > 0 && total === 100;
+  const normalizedCriterionNames = criteria.map((criterion) =>
+    criterion.name.trim().toLocaleLowerCase(),
+  );
+  const criteriaInvalid =
+    normalizedCriterionNames.some((name) => !name) ||
+    new Set(normalizedCriterionNames).size !== normalizedCriterionNames.length ||
+    criteria.some(
+      (criterion) =>
+        !Number.isFinite(criterion.weight) ||
+        criterion.weight < 0 ||
+        criterion.weight > 100,
+    );
+  const minimumRequirements: ValidationRequirement[] = [
+    { valid: Boolean(String(form.title).trim()), label: "Nombre de la vacante", step: 0 },
+    { valid: Boolean(String(form.code).trim()), label: "Código único", step: 0 },
+    { valid: Boolean(String(form.department).trim()), label: "Área o departamento", step: 0 },
+    { valid: Boolean(form.workMode), label: "Modalidad", step: 0 },
+    { valid: Boolean(form.seniorityLevel), label: "Nivel", step: 0 },
+    { valid: Number(form.openings) > 0, label: "Número de plazas mayor que cero", step: 0 },
+    { valid: !salaryInvalid, label: "Rango salarial válido", step: 0 },
+    { valid: !datesInvalid, label: "Orden de fechas válido", step: 0 },
+    { valid: !experienceInvalid, label: "Rango de experiencia válido", step: 1 },
+  ];
+  const minimumValid = minimumRequirements.every((requirement) => requirement.valid);
+  const publishValid =
+    minimumValid &&
+    Boolean(form.closesAt) &&
+    criteria.length > 0 &&
+    !criteriaInvalid &&
+    total === 100;
   useEffect(() => {
     if (id)
-      request(`/admin/vacancies/${id}`)
+      request(`/tf-admin-get-vacancy/admin/vacancies/${id}`)
         .then((data) => {
           const v = data.vacancy,
             s = data.scoring || {};
+          setHasPublishedScoring(s.status === "PUBLISHED");
           setForm({
             ...emptyForm(),
             ...v,
@@ -620,15 +705,24 @@ function Wizard({ id }: { id?: string }) {
     setError("");
     setMessage("");
     try {
-      const path =
-        publish && form.id
-          ? `/admin/vacancies/${form.id}/publish`
-          : form.id
-            ? `/admin/vacancies/${form.id}`
-            : "/admin/vacancies";
+      let vacancyId = String(form.id || "");
+
+      if (publish && !vacancyId) {
+        const draftResult = await request("/admin/vacancies", {
+          method: "POST",
+          body: JSON.stringify(form),
+        });
+        vacancyId = String((draftResult.vacancy || draftResult).id);
+      }
+
+      const path = publish
+        ? `/tf-admin-publish-vacancy/admin/vacancies/${vacancyId}/publish`
+        : vacancyId
+          ? `/tf-admin-update-vacancy/admin/vacancies/${vacancyId}`
+          : "/admin/vacancies";
       const result = await request(path, {
-        method: form.id && !publish ? "PUT" : "POST",
-        body: JSON.stringify(form),
+        method: vacancyId && !publish ? "PUT" : "POST",
+        body: JSON.stringify({ ...form, id: vacancyId }),
       });
       const saved = result.vacancy || result;
       setForm({ ...form, id: saved.id });
@@ -668,6 +762,12 @@ function Wizard({ id }: { id?: string }) {
       </div>
       {error && <div className="alert error">{error}</div>}
       {message && <div className="alert success">{message}</div>}
+      {hasPublishedScoring && (
+        <div className="alert warning">
+          Modificar los criterios creará una nueva versión de scoring. La
+          versión publicada se conservará para mantener la trazabilidad.
+        </div>
+      )}
       <section className="panel wizard-panel">
         {step === 0 && (
           <General
@@ -675,17 +775,39 @@ function Wizard({ id }: { id?: string }) {
             setForm={setForm}
             salaryInvalid={salaryInvalid}
             datesInvalid={datesInvalid}
+            requirements={minimumRequirements.filter(
+              (requirement) => requirement.step === 0,
+            )}
           />
         )}{" "}
-        {step === 1 && <Profile form={form} setForm={setForm} />}{" "}
-        {step === 2 && <Score form={form} setForm={setForm} total={total} />}{" "}
+        {step === 1 && (
+          <Profile
+            form={form}
+            setForm={setForm}
+            experienceInvalid={experienceInvalid}
+            requirements={minimumRequirements.filter(
+              (requirement) => requirement.step === 1,
+            )}
+          />
+        )}{" "}
+        {step === 2 && (
+          <Score
+            form={form}
+            setForm={setForm}
+            total={total}
+            criteriaInvalid={criteriaInvalid}
+          />
+        )}{" "}
         {step === 3 && <Extras form={form} setForm={setForm} />}{" "}
         {step === 4 && <Preview form={form} total={total} />}{" "}
         {step === 5 && (
           <Publish
             total={total}
-            minimumValid={minimumValid}
             criteriaCount={criteria.length}
+            criteriaValid={!criteriaInvalid}
+            hasClosingDate={Boolean(form.closesAt)}
+            minimumRequirements={minimumRequirements}
+            onGoToStep={setStep}
           />
         )}
         <div className="wizard-actions">
@@ -728,16 +850,41 @@ function Wizard({ id }: { id?: string }) {
   );
 }
 
+function ValidationSummary({
+  requirements,
+}: {
+  requirements: ValidationRequirement[];
+}) {
+  const missing = requirements.filter((requirement) => !requirement.valid);
+
+  if (!missing.length) {
+    return <div className="alert success validation-summary">Sección completa.</div>;
+  }
+
+  return (
+    <div className="alert warning validation-summary">
+      <strong>Falta completar o corregir:</strong>
+      <ul>
+        {missing.map((requirement) => (
+          <li key={requirement.label}>{requirement.label}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function General({
   form,
   setForm,
   salaryInvalid,
   datesInvalid,
+  requirements,
 }: {
   form: VacancyForm;
   setForm: (v: VacancyForm) => void;
   salaryInvalid: boolean;
   datesInvalid: boolean;
+  requirements: ValidationRequirement[];
 }) {
   const benefits = form.benefits as any[];
   return (
@@ -747,6 +894,7 @@ function General({
         title="Informacion general"
         text="Datos publicos y condiciones de la oportunidad"
       />
+      <ValidationSummary requirements={requirements} />
       <div className="form-grid">
         <Field label="Nombre de la vacante">
           <Input form={form} setForm={setForm} name="title" required />
@@ -920,9 +1068,13 @@ function General({
 function Profile({
   form,
   setForm,
+  experienceInvalid,
+  requirements,
 }: {
   form: VacancyForm;
   setForm: (v: VacancyForm) => void;
+  experienceInvalid: boolean;
+  requirements: ValidationRequirement[];
 }) {
   return (
     <>
@@ -931,6 +1083,7 @@ function Profile({
         title="Perfil requerido"
         text="Experiencia y educacion esperadas, sin penalizar experiencia superior"
       />
+      <ValidationSummary requirements={requirements} />
       <h3>Experiencia en meses</h3>
       <div className="form-grid">
         <Field label="Experiencia minima">
@@ -960,6 +1113,12 @@ function Profile({
             min={0}
           />
         </Field>
+        {experienceInvalid && (
+          <p className="validation-error wide">
+            La experiencia no puede ser negativa y el mínimo esperado no puede
+            superar al máximo.
+          </p>
+        )}
       </div>
       <h3>Educacion</h3>
       <div className="form-grid">
@@ -1012,10 +1171,12 @@ function Score({
   form,
   setForm,
   total,
+  criteriaInvalid,
 }: {
   form: VacancyForm;
   setForm: (v: VacancyForm) => void;
   total: number;
+  criteriaInvalid: boolean;
 }) {
   const items = form.criteria as Criterion[];
   const update = (id: string, key: keyof Criterion, value: any) =>
@@ -1031,6 +1192,11 @@ function Score({
         text="Los criterios evaluables deben sumar exactamente 100 puntos"
       />
       <ScoreStatus total={total} />
+      {criteriaInvalid && (
+        <p className="validation-error">
+          Cada criterio debe tener un nombre único y un peso entre 0 y 100.
+        </p>
+      )}
       <div className="item-list">
         {items.map((c, i) => (
           <div className="editable-item" key={c.id}>
@@ -1052,7 +1218,7 @@ function Score({
             <div className="form-grid">
               <Field label="Tipo">
                 <select
-                  value={c.type}
+                  value={c.type ?? "OTRO"}
                   onChange={(e) => update(c.id, "type", e.target.value)}
                 >
                   {[
@@ -1070,7 +1236,7 @@ function Score({
               </Field>
               <Field label="Nombre">
                 <input
-                  value={c.name}
+                  value={c.name ?? ""}
                   onChange={(e) => update(c.id, "name", e.target.value)}
                 />
               </Field>
@@ -1079,7 +1245,7 @@ function Score({
                   type="number"
                   min="0"
                   max="100"
-                  value={c.weight}
+                  value={c.weight ?? ""}
                   onChange={(e) =>
                     update(
                       c.id,
@@ -1091,7 +1257,7 @@ function Score({
               </Field>
               <Field label="Aliases separados por coma">
                 <input
-                  value={c.aliases.join(", ")}
+                  value={(c.aliases ?? []).join(", ")}
                   onChange={(e) =>
                     update(
                       c.id,
@@ -1106,7 +1272,7 @@ function Score({
               </Field>
               <Field label="Descripcion" wide>
                 <input
-                  value={c.description}
+                  value={c.description ?? ""}
                   onChange={(e) => update(c.id, "description", e.target.value)}
                 />
               </Field>
@@ -1237,7 +1403,7 @@ function DynamicSimple({
         <div className="inline-row" key={x.id}>
           <input
             placeholder={placeholder}
-            value={x.name}
+            value={x.name ?? ""}
             onChange={(e) =>
               onChange(
                 items.map((i) =>
@@ -1298,17 +1464,17 @@ function DynamicExtras({
         <div className="editable-item compact" key={x.id}>
           <input
             placeholder="Nombre"
-            value={x.name}
+            value={x.name ?? ""}
             onChange={(e) => update(x.id, "name", e.target.value)}
           />
           <input
             placeholder="Descripcion opcional"
-            value={x.description}
+            value={x.description ?? ""}
             onChange={(e) => update(x.id, "description", e.target.value)}
           />
           {withType && (
             <select
-              value={x.type}
+              value={x.type ?? "OTHER"}
               onChange={(e) => update(x.id, "type", e.target.value)}
             >
               {[
@@ -1325,7 +1491,7 @@ function DynamicExtras({
             </select>
           )}
           <select
-            value={x.relevance}
+            value={x.relevance ?? "MEDIUM"}
             onChange={(e) => update(x.id, "relevance", e.target.value)}
           >
             <option value="LOW">Baja</option>
@@ -1421,17 +1587,25 @@ function PreviewBlock({
 }
 function Publish({
   total,
-  minimumValid,
   criteriaCount,
+  criteriaValid,
+  hasClosingDate,
+  minimumRequirements,
+  onGoToStep,
 }: {
   total: number;
-  minimumValid: boolean;
   criteriaCount: number;
+  criteriaValid: boolean;
+  hasClosingDate: boolean;
+  minimumRequirements: ValidationRequirement[];
+  onGoToStep: (step: number) => void;
 }) {
-  const checks = [
-    [minimumValid, "Datos generales y fechas validos"],
-    [criteriaCount > 0, "Al menos un criterio evaluable"],
-    [total === 100, "Score asignado exactamente en 100 puntos"],
+  const checks: ValidationRequirement[] = [
+    ...minimumRequirements,
+    { valid: hasClosingDate, label: "Fecha de cierre definida", step: 0 },
+    { valid: criteriaCount > 0, label: "Al menos un criterio evaluable", step: 2 },
+    { valid: criteriaValid, label: "Criterios con nombres únicos y pesos válidos", step: 2 },
+    { valid: total === 100, label: "Score asignado exactamente en 100 puntos", step: 2 },
   ];
   return (
     <>
@@ -1441,10 +1615,15 @@ function Publish({
         text="La persistencia volvera a validar todas las reglas"
       />
       <div className="publish-checks">
-        {checks.map(([ok, text]) => (
-          <div className={ok ? "ok" : "pending"} key={String(text)}>
-            {ok ? <Check /> : <X />}
-            <span>{text}</span>
+        {checks.map((check) => (
+          <div className={check.valid ? "ok" : "pending"} key={check.label}>
+            {check.valid ? <Check /> : <X />}
+            <span>{check.label}</span>
+            {!check.valid && (
+              <button className="validation-link" onClick={() => onGoToStep(check.step)}>
+                Corregir
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -1542,8 +1721,16 @@ function VacancyCatalog() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    request("/api/public/vacancies")
-      .then((result) => setVacancies(Array.isArray(result) ? result : []))
+    request("/public/vacancies")
+      .then((result) =>
+        setVacancies(
+          Array.isArray(result)
+            ? result
+                .map(normalizePublicVacancy)
+                .filter((vacancy): vacancy is PublicVacancy => vacancy !== null)
+            : [],
+        ),
+      )
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -1616,8 +1803,17 @@ function VacancyDetail({ id }: { id: string }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    request(`/api/public/vacancies/${id}`)
-      .then((result) => setVacancy((result as PublicVacancy) || null))
+    request(`/tf-public-get-vacancy/public/vacancies/${id}`)
+      .then(async (result) => {
+        const publicVacancy = normalizePublicVacancy(result);
+        if (publicVacancy) return publicVacancy;
+
+        const adminResult = await request(
+          `/tf-admin-get-vacancy/admin/vacancies/${id}`,
+        );
+        return normalizePublicVacancy(adminResult);
+      })
+      .then(setVacancy)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [id]);
@@ -1681,6 +1877,44 @@ function VacancyDetail({ id }: { id: string }) {
             </div>
           )}
 
+          {Array.isArray(vacancy.requirements) && vacancy.requirements.length > 0 && (
+            <div className="benefits-box">
+              <h3>Requisitos</h3>
+              <ul>
+                {vacancy.requirements.map((item, index) => (
+                  <li key={`${item.name}-${index}`}>
+                    <strong>{item.name}</strong>{item.description ? `: ${item.description}` : ""}
+                    {item.required ? " (obligatorio)" : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="detail-grid public-requirements">
+            <div>
+              <h3>Experiencia requerida</h3>
+              <p>{vacancy.minimumExperienceMonths
+                ? `${vacancy.minimumExperienceMonths} meses como mínimo`
+                : "No se definió una experiencia mínima."}</p>
+            </div>
+            {vacancy.educationRequired && vacancy.minimumEducation !== "NONE" && (
+              <div>
+                <h3>Educación</h3>
+                <p>{vacancy.minimumEducation}{vacancy.relatedAcademicArea ? ` — ${vacancy.relatedAcademicArea}` : ""}</p>
+              </div>
+            )}
+          </div>
+
+          {Array.isArray(vacancy.desirables) && vacancy.desirables.length > 0 && (
+            <div className="benefits-box">
+              <h3>Conocimientos deseables</h3>
+              <ul>{vacancy.desirables.map((item, index) => (
+                <li key={`${item.name}-${index}`}>{item.name}{item.description ? `: ${item.description}` : ""}</li>
+              ))}</ul>
+            </div>
+          )}
+
           <div className="detail-actions">
             <button className="secondary" onClick={() => navigate("/vacantes")}>
               Volver
@@ -1697,39 +1931,46 @@ function VacancyDetail({ id }: { id: string }) {
 
 function ApplicationForm({ vacancyId }: { vacancyId: string }) {
   const [form, setForm] = useState({
-    fullName: "",
+    firstName: "",
+    lastName: "",
     email: "",
     phone: "",
-    location: "",
+    experienceYears: "",
+    skills: "",
     consentAccepted: false,
   });
-  const [cvName, setCvName] = useState("");
+  const [cvFile, setCvFile] = useState<File | null>(null);
   const [cvError, setCvError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [ticketId, setTicketId] = useState("");
+  const [applicationId, setApplicationId] = useState("");
+  const [attemptNumber, setAttemptNumber] = useState(0);
+  const [canRequestManualReview, setCanRequestManualReview] = useState(false);
+  const [requestingManualReview, setRequestingManualReview] = useState(false);
 
   const onFileChange = (file?: File) => {
     if (!file) {
-      setCvName("");
+      setCvFile(null);
       setCvError("Debes adjuntar tu hoja de vida en PDF.");
       return;
     }
 
     const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
     if (!isPdf) {
-      setCvName("");
+      setCvFile(null);
       setCvError("El archivo debe ser un PDF válido.");
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setCvName("");
+      setCvFile(null);
       setCvError("El PDF no puede superar 5 MB.");
       return;
     }
 
-    setCvName(file.name);
+    setCvFile(file);
     setCvError("");
   };
 
@@ -1743,8 +1984,7 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
       return;
     }
 
-    const fileInput = document.getElementById("cv-file") as HTMLInputElement | null;
-    const file = fileInput?.files?.[0];
+    const file = cvFile;
     if (!file) {
       setError("Debe adjuntar la hoja de vida en PDF.");
       return;
@@ -1758,35 +1998,64 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
 
     setSubmitting(true);
     try {
-      await request("/api/public/applications", {
+      const payload = new FormData();
+      payload.append("vacancyId", vacancyId);
+      payload.append("firstName", form.firstName.trim());
+      payload.append("lastName", form.lastName.trim());
+      payload.append("email", form.email.trim());
+      payload.append("phone", form.phone.trim());
+      payload.append("experienceYears", form.experienceYears);
+      payload.append("skills", form.skills);
+      payload.append("consentAccepted", String(form.consentAccepted));
+      payload.append("cv", file, file.name);
+
+      const result = await request("/public/applications", {
         method: "POST",
-        body: JSON.stringify({
-          vacancyId,
-          fullName: form.fullName,
-          email: form.email,
-          phone: form.phone,
-          location: form.location,
-          consentAccepted: form.consentAccepted,
-          cvFileName: file.name,
-          cvMimeType: file.type || "application/pdf",
-          cvSizeBytes: file.size,
-          source: "WEB",
-        }),
+        body: payload,
       });
-      setSuccess("Tu postulación fue registrada correctamente.");
-      setForm({
-        fullName: "",
-        email: "",
-        phone: "",
-        location: "",
-        consentAccepted: false,
+      setTicketId(result.ticketId || "");
+      setApplicationId(result.applicationId || "");
+      setAttemptNumber(result.attemptNumber || 0);
+      setCanRequestManualReview(Boolean(result.canRequestManualReview));
+      if (result.status === "RECIBIDO") {
+        setSuccess(`Tu postulación fue recibida correctamente. Ticket: ${result.ticketId}`);
+      } else if (result.errorType === "SYSTEM_ERROR") {
+        setError("No pudimos completar la validación por un problema interno. Tu CV no es el problema; intenta nuevamente más tarde.");
+      } else {
+        const attempt = Number(result.attemptNumber || 1);
+        setError(attempt === 1
+          ? "No pudimos leer correctamente el documento. Asegúrate de cargar un PDF que contenga texto seleccionable y no únicamente imágenes escaneadas."
+          : attempt === 2
+            ? "El documento continúa sin poder procesarse. Intenta exportar nuevamente tu hoja de vida desde Word, Google Docs u otra herramienta en formato PDF."
+            : "No pudimos leer correctamente tu hoja de vida. Puedes cargar otra versión o enviarla para revisión manual.");
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const requestManualReview = async () => {
+    if (!applicationId || !cvFile) return;
+    setRequestingManualReview(true);
+    setError("");
+    try {
+      const payload = new FormData();
+      payload.append("applicationId", applicationId);
+      payload.append("authorized", "true");
+      payload.append("reason", "PDF sin texto extraíble después de tres intentos");
+      payload.append("cv", cvFile, cvFile.name);
+      const result = await request("/public/applications/manual-review", {
+        method: "POST", body: payload,
       });
-      if (fileInput) fileInput.value = "";
-      setCvName("");
+      setTicketId(result.ticketId || ticketId);
+      setSuccess(`Documento enviado a revisión manual. Ticket: ${result.ticketId || ticketId}`);
+      setCanRequestManualReview(false);
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setSubmitting(false);
+      setRequestingManualReview(false);
     }
   };
 
@@ -1795,16 +2064,27 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
       <div className="panel application-panel">
         <p className="eyebrow">Postulación</p>
         <h1>Completa tus datos</h1>
+        <div className="application-progress" aria-label="Progreso de la postulación">
+          {["Datos", "CV", "Validación", "Confirmación"].map((label, index) => (
+            <span className={submitting ? (index <= 2 ? "active" : "") : success ? "active" : index <= 1 ? "active" : ""} key={label}>
+              {index + 1}. {label}
+            </span>
+          ))}
+        </div>
         <form onSubmit={submit} className="application-form">
           <div className="form-grid">
             <label className="field">
-              <span>Nombre completo</span>
+              <span>Nombre</span>
               <input
-                value={form.fullName}
-                onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                placeholder="Tu nombre completo"
+                value={form.firstName}
+                onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                maxLength={80}
                 required
               />
+            </label>
+            <label className="field">
+              <span>Apellidos</span>
+              <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} maxLength={100} required />
             </label>
             <label className="field">
               <span>Correo electrónico</span>
@@ -1825,14 +2105,18 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
               />
             </label>
             <label className="field">
-              <span>Ubicación</span>
-              <input
-                value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value })}
-                placeholder="Ciudad o país"
-              />
+              <span>Años de experiencia</span>
+              <input type="number" min="0" max="80" step="0.5" value={form.experienceYears}
+                onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} required />
             </label>
           </div>
+
+          <label className="field wide">
+            <span>Tecnologías o conocimientos principales</span>
+            <input value={form.skills} onChange={(e) => setForm({ ...form, skills: e.target.value })}
+              placeholder="Java, PostgreSQL, Docker" maxLength={1000} required />
+            <small className="muted">Sepáralos por coma.</small>
+          </label>
 
           <label className="field wide">
             <span>Hoja de vida (PDF)</span>
@@ -1842,7 +2126,7 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
               accept="application/pdf"
               onChange={(e) => onFileChange(e.target.files?.[0])}
             />
-            {cvName && <small className="muted">Archivo seleccionado: {cvName}</small>}
+            {cvFile && <small className="muted">Archivo seleccionado: {cvFile.name}</small>}
             {cvError && <small className="validation-error">{cvError}</small>}
           </label>
 
@@ -1857,13 +2141,26 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
 
           {error && <div className="alert error">{error}</div>}
           {success && <div className="alert success">{success}</div>}
+          {ticketId && <div className="ticket-box"><strong>Ticket:</strong> {ticketId}</div>}
+
+          {canRequestManualReview && (
+            <div className="manual-review-box">
+              <p>Este fue el intento {attemptNumber}. La revisión manual solo se realizará si la autorizas.</p>
+              <button type="button" className="secondary" onClick={() => document.getElementById("cv-file")?.click()}>
+                Cargar otra versión
+              </button>
+              <button type="button" className="primary" onClick={requestManualReview} disabled={requestingManualReview}>
+                {requestingManualReview ? "Enviando..." : "Enviar a revisión manual"}
+              </button>
+            </div>
+          )}
 
           <div className="wizard-actions">
             <button type="button" className="secondary" onClick={() => navigate(`/vacantes/${vacancyId}`)}>
               Volver
             </button>
             <button type="submit" className="primary" disabled={submitting || !form.consentAccepted}>
-              {submitting ? "Enviando..." : "Enviar postulación"}
+              {submitting ? "Validando documento..." : attemptNumber ? "Validar otra versión" : "Enviar postulación"}
             </button>
           </div>
         </form>
@@ -1879,7 +2176,7 @@ function CandidatesList() {
 
   useEffect(() => {
     setLoading(true);
-    request("/api/admin/candidates")
+    request("/admin/candidates")
       .then((result) => setCandidates(Array.isArray(result) ? result : []))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -1970,7 +2267,7 @@ function CandidateDetail({ id }: { id: string }) {
 
   useEffect(() => {
     setLoading(true);
-    request(`/api/admin/candidates/${id}`)
+    request(`/tf-admin-get-candidate/admin/candidates/${id}`)
       .then((result) => setCandidate(result || null))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));

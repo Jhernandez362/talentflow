@@ -20,7 +20,7 @@
         "operation": "executeQuery",
         "query": "SELECT talentflow.public_get_vacancy($1::uuid) AS data",
         "options": {
-          "queryParams": ["={{ $json.params.id }}"]
+          "queryReplacement": "={{ [$json.params.id] }}"
         }
       },
       "id": "postgres",

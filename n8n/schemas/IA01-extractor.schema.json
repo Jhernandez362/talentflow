@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "talentflow://schemas/IA01-extractor-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["experiencia_total_anios", "experiencias", "educacion", "cursos", "certificaciones", "idiomas", "habilidades", "habilidades_declaradas_no_verificadas", "advertencias"],
+  "properties": {
+    "experiencia_total_anios": { "type": ["number", "null"], "minimum": 0, "maximum": 80 },
+    "experiencias": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "empresa", "cargo", "fecha_inicio", "fecha_fin", "duracion_meses", "funciones", "tecnologias"], "properties": {
+      "id": { "type": "string", "pattern": "^EXP-[1-9][0-9]*$" }, "empresa": { "type": ["string", "null"] }, "cargo": { "type": ["string", "null"] },
+      "fecha_inicio": { "type": ["string", "null"] }, "fecha_fin": { "type": ["string", "null"] }, "duracion_meses": { "type": ["integer", "null"], "minimum": 0 },
+      "funciones": { "type": "array", "items": { "type": "string" } }, "tecnologias": { "type": "array", "items": { "type": "string" } }
+    } } },
+    "educacion": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["titulo", "nivel", "institucion", "fecha"], "properties": {
+      "titulo": { "type": ["string", "null"] }, "nivel": { "type": ["string", "null"] }, "institucion": { "type": ["string", "null"] }, "fecha": { "type": ["string", "null"] }
+    } } },
+    "cursos": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["nombre", "institucion", "fecha"], "properties": {
+      "nombre": { "type": ["string", "null"] }, "institucion": { "type": ["string", "null"] }, "fecha": { "type": ["string", "null"] }
+    } } },
+    "certificaciones": { "type": "array", "items": { "type": "string" } },
+    "idiomas": { "type": "array", "items": { "type": "string" } },
+    "habilidades": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["nombre", "evidencia_laboral", "experiencia_ids"], "properties": {
+      "nombre": { "type": "string", "minLength": 1 }, "evidencia_laboral": { "type": "boolean" },
+      "experiencia_ids": { "type": "array", "items": { "type": "string", "pattern": "^EXP-[1-9][0-9]*$" } }
+    } } },
+    "habilidades_declaradas_no_verificadas": { "type": "array", "items": { "type": "string" } },
+    "advertencias": { "type": "array", "items": { "type": "string" } }
+  }
+}

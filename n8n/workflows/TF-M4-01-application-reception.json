@@ -1,0 +1,197 @@
+{
+  "id": "tf-m4-application-reception",
+  "name": "TF-M4-01 Application reception",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "public/applications",
+        "responseMode": "responseNode",
+        "options": { "binaryPropertyName": "cv" }
+      },
+      "id": "webhook",
+      "name": "POST multipart application",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "tf-public-apply-vacancy"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item;\nconst binaryKey = item.binary?.cv ? 'cv' : (Object.keys(item.binary || {}).find(key => key.startsWith('cv')) || Object.keys(item.binary || {})[0]);\nconst file = binaryKey ? item.binary[binaryKey] : null;\nconst form = item.json.body ?? item.json;\nlet size = 0;\nlet signatureValid = false;\nif (file) {\n  const buffer = await this.helpers.getBinaryDataBuffer(0, binaryKey);\n  size = buffer.length;\n  signatureValid = buffer.subarray(0, 5).toString('ascii') === '%PDF-';\n}\nconst name = String(file?.fileName || '');\nconst mime = String(file?.mimeType || '').toLowerCase();\nlet preliminaryError = null;\nif (!file) preliminaryError = ['FILE_MISSING', 'Debes adjuntar tu hoja de vida.'];\nelse if (!name.toLowerCase().endsWith('.pdf')) preliminaryError = ['INVALID_EXTENSION', 'El archivo debe tener extensión PDF.'];\nelse if (mime !== 'application/pdf') preliminaryError = ['INVALID_MIME', 'El contenido enviado no tiene MIME PDF.'];\nelse if (size <= 0 || size > 5 * 1024 * 1024) preliminaryError = ['INVALID_SIZE', 'El PDF debe pesar entre 1 byte y 5 MB.'];\nelse if (!signatureValid) preliminaryError = ['INVALID_SIGNATURE', 'La firma del archivo no corresponde a un PDF.'];\nconst binary = file ? { ...(item.binary || {}), cv: file } : (item.binary || {});\nreturn [{ json: { form, originalFilename: name.replace(/[\/\\\\\\0]/g, '_').slice(0, 255), mimeType: mime, sizeBytes: size, preliminaryError }, binary }];"
+      },
+      "id": "inspect",
+      "name": "Inspect CV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "cv",
+        "options": { "joinPages": true, "keepSource": "both", "maxPages": 100 }
+      },
+      "id": "extract-pdf",
+      "name": "Extract CV text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [480, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item;\nconst inspected = $('Inspect CV').item.json;\nconst extracted = String(item.json.text ?? item.json.Text ?? '').replace(/\\s+/g, ' ').trim();\nlet [errorCode, errorMessage] = inspected.preliminaryError || ['', ''];\nif (!errorCode && item.json.error) { errorCode = 'PDF_CORRUPT_OR_PROTECTED'; errorMessage = 'El PDF está corrupto, protegido o no se puede leer.'; }\nelse if (!errorCode && extracted.length < 100) { errorCode = 'INSUFFICIENT_TEXT'; errorMessage = 'El PDF no contiene suficiente texto seleccionable.'; }\nlet cvBase64 = '';\nif (item.binary?.cv) {\n  const buffer = await this.helpers.getBinaryDataBuffer(0, 'cv');\n  cvBase64 = buffer.toString('base64');\n}\nreturn [{ json: { form: inspected.form, valid: !errorCode, errorType: errorCode ? 'DOCUMENT_ERROR' : null, errorCode: errorCode || null, errorMessage: errorMessage || null, originalFilename: inspected.originalFilename, mimeType: inspected.mimeType, sizeBytes: inspected.sizeBytes, extractedTextLength: extracted.length, cvBase64 }, binary: item.binary }];"
+      },
+      "id": "classify",
+      "name": "Classify CV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "cv",
+        "name": "={{ $json.form.vacancyId + '-' + Date.now() + '.pdf' }}",
+        "driveId": { "mode": "list", "value": "My Drive" },
+        "folderId": { "mode": "id", "value": "REPLACE_WITH_PRIVATE_CV_FOLDER_ID" },
+        "options": { "simplifyOutput": true }
+      },
+      "id": "drive",
+      "name": "Store valid CV",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [960, -160]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT talentflow.public_begin_application($1::jsonb) AS data",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ ...$('Classify CV').item.json.form, skills: String($('Classify CV').item.json.form.skills || '').split(',').map(value => value.trim()).filter(Boolean) })] }}"
+        }
+      },
+      "id": "begin-valid",
+      "name": "Begin valid application",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [960, -40],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": { "boolean": [{ "value1": "={{ Boolean($json.data && $json.data.applicationId) }}", "value2": true }] }
+      },
+      "id": "begin-succeeded",
+      "name": "Application is duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1200, -40]
+    },
+    {
+      "parameters": {
+        "jsCode": "const validation = $('Classify CV').item.json;\nconst binary = {};\nif (validation.cvBase64) binary.cv = await this.helpers.prepareBinaryData(Buffer.from(validation.cvBase64, 'base64'), validation.originalFilename, validation.mimeType);\nreturn [{ json: { ...validation, cvBase64: undefined }, binary }];"
+      },
+      "id": "restore-valid-cv",
+      "name": "Restore valid CV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, -40]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { message: $json.message || 'Ya existe una postulación activa para esta vacante', error: 'DUPLICATE_APPLICATION', data: { status: 'REJECTED', errorType: 'BUSINESS_ERROR', errorCode: 'DUPLICATE_APPLICATION' } } }}",
+        "options": { "responseCode": 409, "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "duplicate-response",
+      "name": "Duplicate application response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1440, 80]
+    },
+    {
+      "parameters": {
+        "conditions": { "boolean": [{ "value1": "={{ $json.valid }}", "value2": true }] }
+      },
+      "id": "valid",
+      "name": "CV is valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT talentflow.public_record_document_attempt($1::jsonb) AS data",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ applicationId: $('Begin valid application').first().json.data.applicationId, valid: true, driveFileId: $('Store valid CV').first().json.id, driveReference: $('Store valid CV').first().json.webViewLink || '', originalFilename: $('Classify CV').first().json.originalFilename, mimeType: $('Classify CV').first().json.mimeType, sizeBytes: $('Classify CV').first().json.sizeBytes })] }}"
+        }
+      },
+      "id": "record-success",
+      "name": "Record valid attempt",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1440, -120]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT talentflow.public_begin_application($1::jsonb) AS data",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ ...$json.form, skills: String($json.form.skills || '').split(',').map(value => value.trim()).filter(Boolean) })] }}"
+        }
+      },
+      "id": "begin-invalid",
+      "name": "Begin invalid application",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [960, 160]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT talentflow.public_record_document_attempt($1::jsonb) AS data",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify({ applicationId: $json.data.applicationId, valid: false, errorType: $('Classify CV').item.json.errorType, errorCode: $('Classify CV').item.json.errorCode, errorMessage: $('Classify CV').item.json.errorMessage, originalFilename: $('Classify CV').item.json.originalFilename, mimeType: $('Classify CV').item.json.mimeType, sizeBytes: $('Classify CV').item.json.sizeBytes })] }}"
+        }
+      },
+      "id": "record-failure",
+      "name": "Record failed attempt",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1200, 160]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { data: $json.data } }}",
+        "options": { "responseCode": 200, "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "response",
+      "name": "Application response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1680, 0]
+    }
+  ],
+  "connections": {
+    "POST multipart application": { "main": [[{ "node": "Inspect CV", "type": "main", "index": 0 }]] },
+    "Inspect CV": { "main": [[{ "node": "Extract CV text", "type": "main", "index": 0 }]] },
+    "Extract CV text": { "main": [[{ "node": "Classify CV", "type": "main", "index": 0 }]] },
+    "Classify CV": { "main": [[{ "node": "CV is valid", "type": "main", "index": 0 }]] },
+    "CV is valid": { "main": [[{ "node": "Begin valid application", "type": "main", "index": 0 }], [{ "node": "Begin invalid application", "type": "main", "index": 0 }]] },
+    "Begin valid application": { "main": [[{ "node": "Application is duplicate", "type": "main", "index": 0 }]] },
+    "Application is duplicate": { "main": [[{ "node": "Restore valid CV", "type": "main", "index": 0 }], [{ "node": "Duplicate application response", "type": "main", "index": 0 }]] },
+    "Restore valid CV": { "main": [[{ "node": "Store valid CV", "type": "main", "index": 0 }]] },
+    "Store valid CV": { "main": [[{ "node": "Record valid attempt", "type": "main", "index": 0 }]] },
+    "Begin invalid application": { "main": [[{ "node": "Record failed attempt", "type": "main", "index": 0 }]] },
+    "Record valid attempt": { "main": [[{ "node": "Application response", "type": "main", "index": 0 }]] },
+    "Record failed attempt": { "main": [[{ "node": "Application response", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "12000000-0000-4000-8000-000000000401"
+}
