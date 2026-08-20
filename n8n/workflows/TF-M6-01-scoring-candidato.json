@@ -1,0 +1,59 @@
+{
+  "id": "tf-m6-scoring-candidato",
+  "name": "WF-SCORING-CANDIDATO",
+  "nodes": [
+    {
+      "parameters": { "workflowInputs": { "values": [
+        { "name": "postulacion_id", "type": "string" },
+        { "name": "analysis_id", "type": "string" },
+        { "name": "vacancy_id", "type": "string" },
+        { "name": "scoring_version", "type": "string" }
+      ] } },
+      "id": "input", "name": "Input scoring", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1, "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT jsonb_build_object('postulacion_id',$1,'analysis_id',$2,'vacancy_id',$3,'scoring_version',$4,'scoring_version_id',config.id,'candidate',candidate_data.structured_output,'vacancy',to_jsonb(vacancy),'criteria',COALESCE((SELECT jsonb_agg(to_jsonb(criterion) ORDER BY criterion.evaluation_order) FROM talentflow.scoring_criteria criterion WHERE criterion.scoring_config_version_id=config.id),'[]'::jsonb),'desirables',COALESCE((SELECT jsonb_agg(to_jsonb(desirable) ORDER BY desirable.display_order) FROM talentflow.desirable_requirements desirable WHERE desirable.scoring_config_version_id=config.id),'[]'::jsonb),'added_values',COALESCE((SELECT jsonb_agg(to_jsonb(added_value) ORDER BY added_value.display_order) FROM talentflow.added_value_requirements added_value WHERE added_value.scoring_config_version_id=config.id),'[]'::jsonb)) AS data FROM talentflow.applications application JOIN talentflow.vacancies vacancy ON vacancy.id=application.vacancy_id JOIN talentflow.ai_analyses candidate_data ON candidate_data.id=$2::uuid AND candidate_data.application_id=application.id AND candidate_data.analysis_type='CV_EXTRACTION' AND candidate_data.status='SUCCEEDED' JOIN talentflow.scoring_config_versions config ON config.vacancy_id=vacancy.id AND config.version=$4::integer WHERE application.id=$1::uuid AND application.vacancy_id=$3::uuid AND config.id=(SELECT id FROM talentflow.scoring_config_versions WHERE vacancy_id=$3::uuid AND version=$4::integer)",
+        "options": { "queryReplacement": "={{ [$json.postulacion_id, $json.analysis_id, $json.vacancy_id, $json.scoring_version] }}" }
+      },
+      "id": "load-context", "name": "Load scoring context", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [260, 0],
+      "credentials": { "postgres": { "id": "yV1LeJCuuqdkS03D", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const context=$json.data;if(!context)throw new Error('SCORING_CONTEXT_NOT_FOUND');const norm=v=>String(v??'').trim().toLocaleLowerCase('es').replace(/\\s+/g,' ');const levels=['NINGUNA','BACHILLER','TECNICO','TECNOLOGO','PROFESIONAL','ESPECIALIZACION','MAESTRIA','DOCTORADO'];const level=v=>{const aliases={NONE:'NINGUNA',HIGH_SCHOOL:'BACHILLER',BACHILLERATO:'BACHILLER',TECHNICAL:'TECNICO',TECHNOLOGIST:'TECNOLOGO',PROFESSIONAL:'PROFESIONAL',SPECIALIZATION:'ESPECIALIZACION',MASTER:'MAESTRIA',DOCTORATE:'DOCTORADO'};const key=norm(v).toUpperCase().replace(/\\s+/g,'_');return levels.indexOf(aliases[key]||key)};const candidate=context.candidate;const values=new Set([...(candidate.habilidades||[]).map(s=>typeof s==='string'?s:s.nombre),...(candidate.experiencias||[]).flatMap(e=>[...(e.tecnologias||[]),...(e.funciones||[])]),...(candidate.certificaciones||[]),...(candidate.idiomas||[]),...(candidate.cursos||[]).map(c=>c.nombre),...(candidate.educacion||[]).flatMap(e=>[e.nivel,e.titulo,e.campo])].filter(Boolean).map(norm));const names=c=>[c.name,...(c.aliases||[]),...((c.evaluation_rule||{}).aliases||[])].filter(Boolean).map(norm);const years=Number(candidate.experiencia_total_anios??candidate.experiencia_anios??0)||0;let total=0;const missing=[];const criteria=(context.criteria||[]).slice().sort((a,b)=>(a.evaluation_order||0)-(b.evaluation_order||0)).map(c=>{const weight=Math.max(0,Number(c.weight)||0);const type=norm(c.criterion_type);const aliases=names(c);let matched=false;let points=0;let evidence=false;let explanation;if(type==='experiencia'){const configured=Number((c.evaluation_rule||{}).required_years);const required=Number.isFinite(configured)&&configured>=0?configured:Number(context.vacancy.minimum_experience_months||0)/12;matched=required===0||years>=required;points=required===0?weight:Math.min(years/required,1)*weight;explanation=`Experiencia ${years} de ${required} anos requeridos`;}else if(type==='educacion'){const required=level((c.evaluation_rule||{}).minimum_level||context.vacancy.minimum_education);const current=Math.max(0,...(candidate.educacion||[]).map(e=>level(e.nivel)).filter(v=>v>=0));matched=current>=required;points=matched?weight:0;explanation=`Educacion ${levels[required]||'NINGUNA'}`;}else{matched=aliases.some(a=>values.has(a));evidence=(candidate.habilidades||[]).some(s=>typeof s==='object'&&s.evidencia_laboral===true&&aliases.includes(norm(s.nombre)))||(candidate.experiencias||[]).some(e=>(e.tecnologias||[]).some(t=>aliases.includes(norm(t))));points=matched?weight:0;explanation=matched?'Coincidencia exacta o alias configurado':'Sin coincidencia exacta configurada';}points=Number(Math.min(weight,Math.max(0,points)).toFixed(2));total+=points;if(c.is_required&&!matched)missing.push(c.name);return {criterion:c.name,criterion_id:c.id,weight,points,matched,mandatory:c.is_required===true,work_evidence:evidence,explanation};});const score=Number(Math.min(100,Math.max(0,total)).toFixed(2));const priority=score>=80?'ALTA':score>=60?'MEDIA':'BAJA';const match=list=>(list||[]).filter(c=>names(c).some(a=>values.has(a))).map(c=>c.name);const desired=match(context.desirables),added=match(context.added_values);const minRaw=Number(context.vacancy.expected_experience_min_months??context.vacancy.minimum_experience_months),maxRaw=Number(context.vacancy.expected_experience_max_months);const min=Number.isFinite(minRaw)&&minRaw>=0?minRaw/12:0,max=Number.isFinite(maxRaw)&&maxRaw>=0?maxRaw/12:null;const seniority_fit=years<min?'POR_DEBAJO':max!==null&&years>max?'POR_ENCIMA':'ALINEADO';return [{json:{...context,score,priority,scoring_version:Number(context.scoring_version),criteria,mandatory_missing:missing,desired_found:desired,desired_missing:(context.desirables||[]).filter(c=>!desired.includes(c.name)).map(c=>c.name),added_value:added,added_value_missing:(context.added_values||[]).filter(c=>!added.includes(c.name)).map(c=>c.name),seniority_fit}}];"
+      },
+      "id": "calculate", "name": "Calculate deterministic score", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{...$json,queryParameters:[JSON.stringify({postulacion_id:$json.postulacion_id,analysis_id:$json.analysis_id,vacancy_id:$json.vacancy_id,scoring_version_id:$json.scoring_version_id,scoring_version:$json.scoring_version,score:$json.score,priority:$json.priority,criteria:$json.criteria,mandatory_missing:$json.mandatory_missing,desired_found:$json.desired_found,desired_missing:$json.desired_missing,added_value:$json.added_value,added_value_missing:$json.added_value_missing,seniority_fit:$json.seniority_fit})]}}];"
+      },
+      "id": "prepare-persistence",
+      "name": "Prepare persistence payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": { "operation": "executeQuery", "query": "SELECT talentflow.persist_deterministic_score($1::jsonb) AS data", "options": { "queryReplacement": "={{ $json.queryParameters }}" } },
+      "id": "persist", "name": "Persist score and breakdown", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [1020, 0],
+      "credentials": { "postgres": { "id": "yV1LeJCuuqdkS03D", "name": "Postgres account" } }
+    },
+    {
+      "parameters": { "jsCode": "return [{json:{...$('Calculate deterministic score').first().json,persistence:$json.data,calculated_at:new Date().toISOString()}}];" },
+      "id": "output", "name": "Return scoring result", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1260, 0]
+    }
+  ],
+  "connections": {
+    "Input scoring": { "main": [[{ "node": "Load scoring context", "type": "main", "index": 0 }]] },
+    "Load scoring context": { "main": [[{ "node": "Calculate deterministic score", "type": "main", "index": 0 }]] },
+    "Calculate deterministic score": { "main": [[{ "node": "Prepare persistence payload", "type": "main", "index": 0 }]] },
+    "Prepare persistence payload": { "main": [[{ "node": "Persist score and breakdown", "type": "main", "index": 0 }]] },
+    "Persist score and breakdown": { "main": [[{ "node": "Return scoring result", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "16000000-0000-4000-8000-000000000601"
+}

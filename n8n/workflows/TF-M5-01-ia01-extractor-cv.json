@@ -14,7 +14,8 @@
         "options": { "queryReplacement": "={{ [$json.postulacion_id, 'google-gemini', 'gemini-3.6-flash'] }}" }
       },
       "id": "begin-analysis", "name": "Begin IA-01 analysis",
-      "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [240, 0]
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [240, 0],
+      "credentials": { "postgres": { "id": "yV1LeJCuuqdkS03D", "name": "Postgres account" } }
     },
     {
       "parameters": {
@@ -23,7 +24,8 @@
         "options": { "binaryPropertyName": "data" }
       },
       "id": "download-cv", "name": "Download valid CV",
-      "type": "n8n-nodes-base.googleDrive", "typeVersion": 3, "position": [480, 0]
+      "type": "n8n-nodes-base.googleDrive", "typeVersion": 3, "position": [480, 0],
+      "credentials": { "googleDriveOAuth2Api": { "id": "oAIJxsT0bXNRwRsx", "name": "Google Drive account" } }
     },
     {
       "parameters": {
@@ -56,7 +58,8 @@
         "options": { "temperature": 0.1, "maxOutputTokens": 8192 }
       },
       "id": "gemini-model", "name": "Gemini 3.6 Flash",
-      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini", "typeVersion": 1.1, "position": [1120, 240]
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini", "typeVersion": 1.1, "position": [1120, 240],
+      "credentials": { "googlePalmApi": { "id": "1rM8abptN561zj2o", "name": "Google Gemini(PaLM) Api account" } }
     },
     {
       "parameters": {
@@ -85,7 +88,8 @@
         "options": { "queryReplacement": "={{ [$('Begin IA-01 analysis').first().json.data.analysis_id, $json.structured_candidate_json] }}" }
       },
       "id": "record-success", "name": "Record IA-01 success",
-      "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [1960, -100]
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [1960, -100],
+      "credentials": { "postgres": { "id": "yV1LeJCuuqdkS03D", "name": "Postgres account" } }
     },
     {
       "parameters": {
@@ -93,7 +97,51 @@
         "options": { "queryReplacement": "={{ [$('Begin IA-01 analysis').first().json.data.analysis_id, $json.error || 'Respuesta IA inválida después de 3 intentos'] }}" }
       },
       "id": "record-failure", "name": "Record IA-01 failure",
-      "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [1960, 100]
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [1960, 100],
+      "credentials": { "postgres": { "id": "yV1LeJCuuqdkS03D", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT jsonb_build_object('postulacion_id', application.id, 'analysis_id', $2::uuid, 'vacancy_id', application.vacancy_id, 'scoring_version', config.version) AS data FROM talentflow.applications application JOIN talentflow.scoring_config_versions config ON config.vacancy_id=application.vacancy_id AND config.status='PUBLISHED' WHERE application.id=$1::uuid",
+        "options": { "queryReplacement": "={{ [$('Input postulacion_id').first().json.postulacion_id, $json.data.analysis_id] }}" }
+      },
+      "id": "load-scoring-input",
+      "name": "Load scoring input",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "credentials": { "postgres": { "id": "yV1LeJCuuqdkS03D", "name": "Postgres account" } },
+      "position": [2200, -100]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "tf-m6-scoring-candidato", "mode": "list", "cachedResultName": "WF-SCORING-CANDIDATO" },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "postulacion_id": "={{ $json.data.postulacion_id }}",
+            "analysis_id": "={{ $json.data.analysis_id }}",
+            "vacancy_id": "={{ $json.data.vacancy_id }}",
+            "scoring_version": "={{ String($json.data.scoring_version) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "postulacion_id", "displayName": "postulacion_id", "required": true, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string", "removed": false },
+            { "id": "analysis_id", "displayName": "analysis_id", "required": true, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string", "removed": false },
+            { "id": "vacancy_id", "displayName": "vacancy_id", "required": true, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string", "removed": false },
+            { "id": "scoring_version", "displayName": "scoring_version", "required": true, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string", "removed": false }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "execute-scoring",
+      "name": "Execute deterministic scoring",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [2440, -100]
     }
   ],
   "connections": {
@@ -106,7 +154,9 @@
     "IA-01 Structured Output": { "ai_outputParser": [[{ "node": "IA-01 Extractor", "type": "ai_outputParser", "index": 0 }]] },
     "IA-01 Extractor": { "main": [[{ "node": "Validate IA-01 output", "type": "main", "index": 0 }]] },
     "Validate IA-01 output": { "main": [[{ "node": "Output is valid", "type": "main", "index": 0 }]] },
-    "Output is valid": { "main": [[{ "node": "Record IA-01 success", "type": "main", "index": 0 }], [{ "node": "Record IA-01 failure", "type": "main", "index": 0 }]] }
+    "Output is valid": { "main": [[{ "node": "Record IA-01 success", "type": "main", "index": 0 }], [{ "node": "Record IA-01 failure", "type": "main", "index": 0 }]] },
+    "Record IA-01 success": { "main": [[{ "node": "Load scoring input", "type": "main", "index": 0 }]] },
+    "Load scoring input": { "main": [[{ "node": "Execute deterministic scoring", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" },
   "active": false,

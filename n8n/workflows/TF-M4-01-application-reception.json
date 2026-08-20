@@ -125,9 +125,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT talentflow.public_record_document_attempt($1::jsonb) AS data",
+        "query": "SELECT talentflow.public_record_document_attempt(jsonb_build_object('applicationId', $1::text, 'valid', true, 'driveFileId', $2::text, 'driveReference', NULLIF($3::text, ''), 'originalFilename', $4::text, 'mimeType', $5::text, 'sizeBytes', $6::bigint)) AS data",
         "options": {
-          "queryReplacement": "={{ [JSON.stringify({ applicationId: $('Begin valid application').first().json.data.applicationId, valid: true, driveFileId: $('Store valid CV').first().json.id, driveReference: $('Store valid CV').first().json.webViewLink || '', originalFilename: $('Classify CV').first().json.originalFilename, mimeType: $('Classify CV').first().json.mimeType, sizeBytes: $('Classify CV').first().json.sizeBytes })] }}"
+          "queryReplacement": "={{ [$('Begin valid application').all()[0]?.json?.data?.applicationId || '', $json.id || '', $json.webViewLink || '', $('Classify CV').all()[0]?.json?.originalFilename || '', $('Classify CV').all()[0]?.json?.mimeType || '', Number($('Classify CV').all()[0]?.json?.sizeBytes || 0)] }}"
         }
       },
       "id": "record-success",
@@ -175,6 +175,26 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
       "position": [1680, 0]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "tf-m5-ia01-extractor-cv", "mode": "list", "cachedResultName": "WF-IA01-EXTRACTOR-CV" },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": { "postulacion_id": "={{ $json.data.applicationId }}" },
+          "matchingColumns": [],
+          "schema": [{ "id": "postulacion_id", "displayName": "postulacion_id", "required": true, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "string", "removed": false }],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": { "waitForSubWorkflow": false }
+      },
+      "id": "start-ia01",
+      "name": "Start IA-01 automatically",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [1680, -180]
     }
   ],
   "connections": {
@@ -188,7 +208,7 @@
     "Restore valid CV": { "main": [[{ "node": "Store valid CV", "type": "main", "index": 0 }]] },
     "Store valid CV": { "main": [[{ "node": "Record valid attempt", "type": "main", "index": 0 }]] },
     "Begin invalid application": { "main": [[{ "node": "Record failed attempt", "type": "main", "index": 0 }]] },
-    "Record valid attempt": { "main": [[{ "node": "Application response", "type": "main", "index": 0 }]] },
+    "Record valid attempt": { "main": [[{ "node": "Application response", "type": "main", "index": 0 }, { "node": "Start IA-01 automatically", "type": "main", "index": 0 }]] },
     "Record failed attempt": { "main": [[{ "node": "Application response", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" },

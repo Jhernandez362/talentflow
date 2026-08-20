@@ -244,10 +244,13 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
       <aside className={open ? "sidebar open" : "sidebar"}>
         <div className="brand-row">
           <a
-            href="/admin"
+            href="/"
+            aria-label="Ir al inicio publico de TalentFlow"
+            title="Ir al portal de vacantes"
             onClick={(e) => {
               e.preventDefault();
-              navigate("/admin/dashboard");
+              navigate("/");
+              setOpen(false);
             }}
           >
             TalentFlow
@@ -1697,10 +1700,18 @@ function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="public-shell">
       <header className="public-header">
-        <div className="public-brand">
+        <a
+          className="public-brand"
+          href="/"
+          aria-label="Ir al inicio de TalentFlow"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate("/");
+          }}
+        >
           <span>TalentFlow</span>
           <small>Bolsa de talento</small>
-        </div>
+        </a>
         <nav className="public-nav">
           <a href="/vacantes" onClick={(e) => { e.preventDefault(); navigate("/vacantes"); }}>
             Vacantes
@@ -2030,7 +2041,12 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
             : "No pudimos leer correctamente tu hoja de vida. Puedes cargar otra versión o enviarla para revisión manual.");
       }
     } catch (e: any) {
-      setError(e.message);
+      const message = String(e?.message || "");
+      setError(
+        /resource you are requesting|file not found|google drive/i.test(message)
+          ? "El PDF se leyó correctamente, pero no pudimos almacenarlo en este momento. Intenta nuevamente; si el problema continúa, contacta al equipo de RRHH."
+          : message || "No fue posible enviar la postulación.",
+      );
     } finally {
       setSubmitting(false);
     }
