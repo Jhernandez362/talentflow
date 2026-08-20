@@ -103,8 +103,8 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { message: $json.message || 'Ya existe una postulación activa para esta vacante', error: 'DUPLICATE_APPLICATION', data: { status: 'REJECTED', errorType: 'BUSINESS_ERROR', errorCode: 'DUPLICATE_APPLICATION' } } }}",
-        "options": { "responseCode": 409, "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+        "responseBody": "={{ (() => { const duplicate = /Ya existe una postulación/i.test($json.message || ''); const errorCode = duplicate ? 'DUPLICATE_APPLICATION' : 'APPLICATION_VALIDATION_ERROR'; return { message: $json.message || 'No fue posible validar los datos de la postulación', error: errorCode, data: { status: 'REJECTED', errorType: 'BUSINESS_ERROR', errorCode } }; })() }}",
+        "options": { "responseCode": "={{ /Ya existe una postulación/i.test($json.message || '') ? 409 : 422 }}", "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
       },
       "id": "duplicate-response",
       "name": "Duplicate application response",

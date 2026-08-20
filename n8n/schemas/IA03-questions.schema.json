@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "talentflow://schemas/IA03-questions-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["questions"],
+  "properties": {
+    "questions": {
+      "type": "array", "minItems": 1, "maxItems": 5,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["topic", "question", "source_type", "evidence", "experience_id"],
+        "properties": {
+          "topic": { "type": "string", "minLength": 1, "maxLength": 160 },
+          "question": { "type": "string", "minLength": 1, "maxLength": 600 },
+          "source_type": { "enum": ["WORK_EXPERIENCE", "DECLARED_SKILL", "EDUCATION", "CERTIFICATION", "REQUIREMENT_VALIDATION"] },
+          "evidence": { "type": ["string", "null"], "maxLength": 1000 },
+          "experience_id": { "type": ["string", "null"], "maxLength": 80 }
+        }
+      }
+    }
+  }
+}

@@ -66,7 +66,7 @@ BEGIN
 
     valid_app := talentflow.public_begin_application(jsonb_build_object(
         'vacancyId', vacancy_id, 'firstName', 'Prueba', 'lastName', 'PDF Valido',
-        'email', 'module4-valid@example.test', 'experienceYears', 1,
+        'email', 'module4-valid@example.test', 'phone', '3002223344', 'experienceYears', 1,
         'skills', jsonb_build_array('Java'), 'consentAccepted', true
     ));
     attempt_result := talentflow.public_record_document_attempt(jsonb_build_object(
@@ -81,7 +81,7 @@ BEGIN
     BEGIN
         PERFORM talentflow.public_begin_application(jsonb_build_object(
             'vacancyId', vacancy_id, 'firstName', 'Prueba', 'lastName', 'PDF Valido',
-            'email', 'module4-valid@example.test', 'experienceYears', 1,
+            'email', 'module4-valid@example.test', 'phone', '3002223344', 'experienceYears', 1,
             'skills', jsonb_build_array('Java'), 'consentAccepted', true
         ));
         RAISE EXCEPTION 'El duplicado debió fallar';

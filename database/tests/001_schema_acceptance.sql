@@ -47,12 +47,12 @@ BEGIN
     INSERT INTO talentflow.candidates (id, email, full_name)
     VALUES (test_candidate, 'duplicate.test@example.invalid', 'Candidato Ficticio');
 
-    INSERT INTO talentflow.applications (vacancy_id, candidate_id)
-    VALUES ('20000000-0000-4000-8000-000000000001', test_candidate);
+    INSERT INTO talentflow.applications (vacancy_id, candidate_id, ticket_id)
+    VALUES ('20000000-0000-4000-8000-000000000001', test_candidate, 'TF-TEST-000001');
 
     BEGIN
-        INSERT INTO talentflow.applications (vacancy_id, candidate_id)
-        VALUES ('20000000-0000-4000-8000-000000000001', test_candidate);
+        INSERT INTO talentflow.applications (vacancy_id, candidate_id, ticket_id)
+        VALUES ('20000000-0000-4000-8000-000000000001', test_candidate, 'TF-TEST-000002');
         RAISE EXCEPTION 'Duplicate application was unexpectedly accepted';
     EXCEPTION
         WHEN unique_violation THEN NULL;
@@ -95,11 +95,12 @@ SET CONSTRAINTS ALL DEFERRED;
 INSERT INTO talentflow.candidates (id, email, full_name)
 VALUES ('50000000-0000-4000-8000-000000000001', 'score.test@example.invalid', 'Candidato Score Ficticio');
 
-INSERT INTO talentflow.applications (id, vacancy_id, candidate_id)
+INSERT INTO talentflow.applications (id, vacancy_id, candidate_id, ticket_id)
 VALUES (
     '60000000-0000-4000-8000-000000000001',
     '20000000-0000-4000-8000-000000000001',
-    '50000000-0000-4000-8000-000000000001'
+    '50000000-0000-4000-8000-000000000001',
+    'TF-TEST-000003'
 );
 
 INSERT INTO talentflow.score_evaluations (

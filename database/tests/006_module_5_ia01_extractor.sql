@@ -11,7 +11,7 @@ BEGIN
 
     application_data := talentflow.public_begin_application(jsonb_build_object(
         'vacancyId',vacancy_id,'firstName','Modulo','lastName','Cinco',
-        'email','module5-success@example.test','experienceYears',2,
+        'email','module5-success@example.test','phone','3004445566','experienceYears',2,
         'skills',jsonb_build_array('Java','Docker'),'consentAccepted',true));
     PERFORM talentflow.public_record_document_attempt(jsonb_build_object(
         'applicationId',application_data->>'applicationId','valid',true,
@@ -37,8 +37,8 @@ BEGIN
 
     application_data := talentflow.public_begin_application(jsonb_build_object(
         'vacancyId',vacancy_id,'firstName','Modulo','lastName','Retry',
-        'email','module5-retry@example.test','experienceYears',0,
-        'skills','[]'::jsonb,'consentAccepted',true));
+        'email','module5-retry@example.test','phone','3004445567','experienceYears',0,
+        'skills',jsonb_build_array('Por definir'),'consentAccepted',true));
     PERFORM talentflow.public_record_document_attempt(jsonb_build_object(
         'applicationId',application_data->>'applicationId','valid',true,
         'driveFileId','drive-module5-retry','originalFilename','cv.pdf',

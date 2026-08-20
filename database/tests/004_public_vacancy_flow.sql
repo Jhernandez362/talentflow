@@ -59,20 +59,18 @@ BEGIN
         RAISE EXCEPTION 'Public vacancy detail should include title';
     END IF;
 
-    SELECT talentflow.public_apply_to_vacancy(jsonb_build_object(
+    SELECT talentflow.public_begin_application(jsonb_build_object(
         'vacancyId', target_vacancy_id,
-        'fullName', 'Ana Candidata',
+        'firstName', 'Ana',
+        'lastName', 'Candidata',
         'email', 'ana.candidata@example.com',
         'phone', '3001234567',
-        'location', 'Bogotá',
-        'consentAccepted', true,
-        'cvFileName', 'ana-cv.pdf',
-        'cvMimeType', 'application/pdf',
-        'cvSizeBytes', 120000,
-        'source', 'WEB'
-    ))->>'status' INTO application_status;
+        'experienceYears', 2,
+        'skills', jsonb_build_array('Java'),
+        'consentAccepted', true
+    ))->>'applicationId' INTO application_status;
 
-    IF application_status IS NULL OR application_status <> 'created' THEN
+    IF application_status IS NULL THEN
         RAISE EXCEPTION 'Application record was not created';
     END IF;
 
@@ -84,28 +82,32 @@ BEGIN
     ) = false THEN
         RAISE EXCEPTION 'Application row not linked to candidate';
     END IF;
+
+    PERFORM talentflow.public_record_document_attempt(jsonb_build_object(
+        'applicationId', application_status, 'valid', true,
+        'driveFileId', 'drive-module3-public-test', 'originalFilename', 'ana-cv.pdf',
+        'mimeType', 'application/pdf', 'sizeBytes', 120000
+    ));
 END;
 $$;
 
 DO $$
 BEGIN
-    PERFORM talentflow.public_apply_to_vacancy(jsonb_build_object(
+    PERFORM talentflow.public_begin_application(jsonb_build_object(
         'vacancyId', (SELECT id FROM talentflow.vacancies WHERE code = 'TF-PUBLIC-OPEN-01'),
-        'fullName', 'Ana Candidata',
+        'firstName', 'Ana',
+        'lastName', 'Candidata',
         'email', 'ana.candidata@example.com',
         'phone', '3001234567',
-        'location', 'Bogotá',
-        'consentAccepted', true,
-        'cvFileName', 'duplicate.pdf',
-        'cvMimeType', 'application/pdf',
-        'cvSizeBytes', 130000,
-        'source', 'WEB'
+        'experienceYears', 2,
+        'skills', jsonb_build_array('Java'),
+        'consentAccepted', true
     ));
 
     RAISE EXCEPTION 'La aplicación duplicada debería haber sido rechazada';
 EXCEPTION
     WHEN others THEN
-        IF position('Ya existe una postulación para esta vacante' in SQLERRM) = 0 THEN
+        IF position('postulación activa' in SQLERRM) = 0 THEN
             RAISE;
         END IF;
 END $$;

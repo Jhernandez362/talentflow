@@ -1,74 +1,159 @@
 {
-  "name": "TF-ADMIN-05 Publish vacancy",
-  "nodes": [
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "admin/vacancies/:id/publish",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "webhook",
-      "name": "POST publish",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [0, 0],
-      "webhookId": "tf-admin-publish-vacancy"
-    },
-    {
-      "parameters": {
-        "jsCode": "const p={...($json.body??$json),id:$json.params.id}; const weights=(p.criteria??[]).map(c=>Number(c.weight)); if(!weights.length||weights.some(w=>!Number.isFinite(w)||w<0)||weights.reduce((a,b)=>a+b,0)!==100) throw new Error('La configuracion publicada debe sumar exactamente 100 puntos'); if(!String(p.title??'').trim()||!String(p.code??'').trim()||!p.department||!p.workMode||!p.seniorityLevel) throw new Error('Faltan datos minimos para publicar'); return [{json:{payload:p}}];"
-      },
-      "id": "validate",
-      "name": "Validate publication",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [220, 0]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT talentflow.admin_save_vacancy($1::jsonb, true) AS data",
-        "options": {
-          "queryReplacement": "={{ [JSON.stringify($json.payload)] }}"
+    "id": "F91d1nvv0N7TIPdq",
+    "name": "TF-ADMIN-05 Publish vacancy",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "admin/vacancies/:id/publish",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook",
+            "name": "POST publish",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                0,
+                0
+            ],
+            "webhookId": "tf-admin-publish-vacancy"
+        },
+        {
+            "parameters": {
+                "jsCode": "const p={...($json.body??$json),id:$json.params.id}; const weights=(p.criteria??[]).map(c=>Number(c.weight)); if(!weights.length||weights.some(w=>!Number.isFinite(w)||w<0)||weights.reduce((a,b)=>a+b,0)!==100) throw new Error('La configuracion publicada debe sumar exactamente 100 puntos'); if(!String(p.title??'').trim()||!String(p.code??'').trim()||!p.department||!p.workMode||!p.seniorityLevel) throw new Error('Faltan datos minimos para publicar'); return [{json:{payload:p}}];"
+            },
+            "id": "validate",
+            "name": "Validate publication",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                220,
+                0
+            ],
+            "onError": "continueErrorOutput"
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT talentflow.admin_save_vacancy($1::jsonb, true) AS data",
+                "options": {
+                    "queryReplacement": "={{ [JSON.stringify($json.payload)] }}"
+                }
+            },
+            "id": "postgres",
+            "name": "PostgreSQL",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.6,
+            "position": [
+                460,
+                0
+            ],
+            "onError": "continueErrorOutput"
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ { data: $json.data } }}",
+                "options": {
+                    "responseCode": 200,
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "response",
+            "name": "Response",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.4,
+            "position": [
+                700,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ {error:true, message: (typeof $json.error === 'string' ? $json.error : $json.error?.message) ?? $json.message ?? 'No fue posible completar la operacion'} }}",
+                "options": {
+                    "responseCode": 422,
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "errorResponse",
+            "name": "Error Response",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.4,
+            "position": [
+                220,
+                200
+            ]
         }
-      },
-      "id": "postgres",
-      "name": "PostgreSQL",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [460, 0]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { data: $json.data } }}",
-        "options": {
-          "responseCode": 200,
-          "responseHeaders": {
-            "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }]
-          }
+    ],
+    "connections": {
+        "POST publish": {
+            "main": [
+                [
+                    {
+                        "node": "Validate publication",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validate publication": {
+            "main": [
+                [
+                    {
+                        "node": "PostgreSQL",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Error Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "PostgreSQL": {
+            "main": [
+                [
+                    {
+                        "node": "Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Error Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
         }
-      },
-      "id": "response",
-      "name": "Response",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.4,
-      "position": [700, 0]
-    }
-  ],
-  "connections": {
-    "POST publish": {
-      "main": [[{ "node": "Validate publication", "type": "main", "index": 0 }]]
     },
-    "Validate publication": {
-      "main": [[{ "node": "PostgreSQL", "type": "main", "index": 0 }]]
+    "settings": {
+        "executionOrder": "v1"
     },
-    "PostgreSQL": {
-      "main": [[{ "node": "Response", "type": "main", "index": 0 }]]
-    }
-  },
-  "settings": { "executionOrder": "v1" },
-  "active": false,
-  "versionId": "11000000-0000-4000-8000-000000000005"
+    "active": false,
+    "versionId": "11000000-0000-4000-8000-000000000005"
 }

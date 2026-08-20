@@ -49,6 +49,8 @@ services:
       - "${N8N_HOST_PORT:-5678}:5678"
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workspace/workflows:ro
+      - ./n8n/sync:/workspace/sync:ro
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5678/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s

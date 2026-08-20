@@ -142,6 +142,28 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [2440, -100]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "tf-m7-ia02-summary", "mode": "list", "cachedResultName": "WF-IA02-RESUMEN" },
+        "workflowInputs": { "mappingMode": "defineBelow", "value": { "postulacion_id": "={{ $('Input postulacion_id').first().json.postulacion_id }}" }, "matchingColumns": [], "schema": [{ "id": "postulacion_id", "displayName": "postulacion_id", "required": true, "display": true, "canBeUsedToMatch": true, "type": "string" }], "attemptToConvertTypes": false, "convertFieldsToString": true },
+        "options": { "waitForSubWorkflow": false }
+      },
+      "id": "execute-ia02", "name": "Execute IA-02 summary",
+      "type": "n8n-nodes-base.executeWorkflow", "typeVersion": 1.3,
+      "position": [2680, -180], "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "tf-m7-ia03-questions", "mode": "list", "cachedResultName": "WF-IA03-PREGUNTAS" },
+        "workflowInputs": { "mappingMode": "defineBelow", "value": { "postulacion_id": "={{ $('Input postulacion_id').first().json.postulacion_id }}" }, "matchingColumns": [], "schema": [{ "id": "postulacion_id", "displayName": "postulacion_id", "required": true, "display": true, "canBeUsedToMatch": true, "type": "string" }], "attemptToConvertTypes": false, "convertFieldsToString": true },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "execute-ia03", "name": "Execute IA-03 questions",
+      "type": "n8n-nodes-base.executeWorkflow", "typeVersion": 1.3,
+      "position": [2680, 20], "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -156,7 +178,8 @@
     "Validate IA-01 output": { "main": [[{ "node": "Output is valid", "type": "main", "index": 0 }]] },
     "Output is valid": { "main": [[{ "node": "Record IA-01 success", "type": "main", "index": 0 }], [{ "node": "Record IA-01 failure", "type": "main", "index": 0 }]] },
     "Record IA-01 success": { "main": [[{ "node": "Load scoring input", "type": "main", "index": 0 }]] },
-    "Load scoring input": { "main": [[{ "node": "Execute deterministic scoring", "type": "main", "index": 0 }]] }
+    "Load scoring input": { "main": [[{ "node": "Execute deterministic scoring", "type": "main", "index": 0 }]] },
+    "Execute deterministic scoring": { "main": [[{ "node": "Execute IA-02 summary", "type": "main", "index": 0 }, { "node": "Execute IA-03 questions", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" },
   "active": false,

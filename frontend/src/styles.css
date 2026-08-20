@@ -239,6 +239,16 @@ svg {
   border: 1px solid #dce2de;
   border-radius: 7px;
 }
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.empty-hint {
+  color: #69746e;
+  font-size: 14px;
+}
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1077,6 +1087,19 @@ textarea {
   font-size: 14px;
   color: #17201b;
 }
+
+.candidate-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.support-notice { padding: 10px 14px; border-left: 4px solid #247a58; background: #eef8f3; color: #244d3d; }
+.alert-inline { color: #9b3f2b; font-size: 12px; font-weight: 700; }
+.review-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+.review-actions > div, .manual-analysis-form { display: grid; gap: 10px; }
+.button-link { display: inline-block; padding: 9px 12px; border: 1px solid #247a58; border-radius: 5px; color: #185e42; text-decoration: none; font-weight: 700; }
+.questions-list small { color: #69776f; }
 
 .priority-alta {
   background: #ffebee;

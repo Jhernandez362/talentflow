@@ -8,7 +8,7 @@
       "position": [0, 0], "webhookId": "tf-admin-list-candidates"
     },
     {
-      "parameters": { "operation": "executeQuery", "query": "SELECT talentflow.admin_list_candidates() AS data", "options": {} },
+      "parameters": { "operation": "executeQuery", "query": "SELECT talentflow.admin_list_candidates($1::jsonb) AS data", "options": { "queryReplacement": "={{ [JSON.stringify($json.query || {})] }}" } },
       "id": "postgres", "name": "PostgreSQL", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6,
       "position": [240, 0]
     },

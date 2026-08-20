@@ -1,74 +1,159 @@
 {
-  "name": "TF-ADMIN-03 Create vacancy",
-  "nodes": [
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "admin/vacancies",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "webhook",
-      "name": "POST vacancy",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [0, 0],
-      "webhookId": "tf-admin-create-vacancy"
-    },
-    {
-      "parameters": {
-        "jsCode": "const p=$json.body??$json; if(!String(p.title??'').trim()||!String(p.code??'').trim()) throw new Error('Nombre y codigo son obligatorios'); const weights=(p.criteria??[]).map(c=>Number(c.weight)); if(weights.some(w=>!Number.isFinite(w)||w<0)) throw new Error('Los pesos deben ser numeros no negativos'); if(new Set((p.criteria??[]).map(c=>String(c.name).trim().toLowerCase())).size!==(p.criteria??[]).filter(c=>String(c.name).trim()).length) throw new Error('No se permiten criterios duplicados'); return [{json:{payload:p}}];"
-      },
-      "id": "validate",
-      "name": "Validate payload",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [220, 0]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT talentflow.admin_save_vacancy($1::jsonb, false) AS data",
-        "options": {
-          "queryReplacement": "={{ [JSON.stringify($json.payload)] }}"
+    "id": "M381n3UJTwoJQAZG",
+    "name": "TF-ADMIN-03 Create vacancy",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "admin/vacancies",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook",
+            "name": "POST vacancy",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                0,
+                0
+            ],
+            "webhookId": "tf-admin-create-vacancy"
+        },
+        {
+            "parameters": {
+                "jsCode": "const p=$json.body??$json; if(!String(p.title??'').trim()||!String(p.code??'').trim()) throw new Error('Nombre y codigo son obligatorios'); const weights=(p.criteria??[]).map(c=>Number(c.weight)); if(weights.some(w=>!Number.isFinite(w)||w<0)) throw new Error('Los pesos deben ser numeros no negativos'); if(new Set((p.criteria??[]).map(c=>String(c.name).trim().toLowerCase())).size!==(p.criteria??[]).filter(c=>String(c.name).trim()).length) throw new Error('No se permiten criterios duplicados'); return [{json:{payload:p}}];"
+            },
+            "id": "validate",
+            "name": "Validate payload",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                220,
+                0
+            ],
+            "onError": "continueErrorOutput"
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT talentflow.admin_save_vacancy($1::jsonb, false) AS data",
+                "options": {
+                    "queryReplacement": "={{ [JSON.stringify($json.payload)] }}"
+                }
+            },
+            "id": "postgres",
+            "name": "PostgreSQL",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.6,
+            "position": [
+                460,
+                0
+            ],
+            "onError": "continueErrorOutput"
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ { data: $json.data } }}",
+                "options": {
+                    "responseCode": 201,
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "response",
+            "name": "Response",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.4,
+            "position": [
+                700,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ {error:true, message: (typeof $json.error === 'string' ? $json.error : $json.error?.message) ?? $json.message ?? 'No fue posible completar la operacion'} }}",
+                "options": {
+                    "responseCode": 422,
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "errorResponse",
+            "name": "Error Response",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.4,
+            "position": [
+                220,
+                200
+            ]
         }
-      },
-      "id": "postgres",
-      "name": "PostgreSQL",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [460, 0]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { data: $json.data } }}",
-        "options": {
-          "responseCode": 201,
-          "responseHeaders": {
-            "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }]
-          }
+    ],
+    "connections": {
+        "POST vacancy": {
+            "main": [
+                [
+                    {
+                        "node": "Validate payload",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validate payload": {
+            "main": [
+                [
+                    {
+                        "node": "PostgreSQL",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Error Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "PostgreSQL": {
+            "main": [
+                [
+                    {
+                        "node": "Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Error Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
         }
-      },
-      "id": "response",
-      "name": "Response",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.4,
-      "position": [700, 0]
-    }
-  ],
-  "connections": {
-    "POST vacancy": {
-      "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]]
     },
-    "Validate payload": {
-      "main": [[{ "node": "PostgreSQL", "type": "main", "index": 0 }]]
+    "settings": {
+        "executionOrder": "v1"
     },
-    "PostgreSQL": {
-      "main": [[{ "node": "Response", "type": "main", "index": 0 }]]
-    }
-  },
-  "settings": { "executionOrder": "v1" },
-  "active": false,
-  "versionId": "11000000-0000-4000-8000-000000000003"
+    "active": false,
+    "versionId": "11000000-0000-4000-8000-000000000003"
 }

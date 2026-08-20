@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "talentflow://schemas/IA02-summary-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "key_points"],
+  "properties": {
+    "summary": { "type": "string", "minLength": 1, "maxLength": 1200 },
+    "key_points": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "minLength": 1, "maxLength": 300 } }
+  }
+}

@@ -1,61 +1,127 @@
 {
-  "name": "TF-ADMIN-07 Duplicate vacancy",
-  "nodes": [
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "admin/vacancies/:id/duplicate",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "webhook",
-      "name": "POST duplicate",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [0, 0],
-      "webhookId": "tf-admin-duplicate-vacancy"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT talentflow.admin_duplicate_vacancy($1::uuid, $2::varchar) AS data",
-        "options": {
-          "queryReplacement": "={{ [$json.params.id, $json.body.code] }}"
+    "id": "tpqB0su2vkwCM4Xi",
+    "name": "TF-ADMIN-07 Duplicate vacancy",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "admin/vacancies/:id/duplicate",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook",
+            "name": "POST duplicate",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                0,
+                0
+            ],
+            "webhookId": "tf-admin-duplicate-vacancy"
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT talentflow.admin_duplicate_vacancy($1::uuid, $2::varchar) AS data",
+                "options": {
+                    "queryReplacement": "={{ [$json.params.id, $json.body.code] }}"
+                }
+            },
+            "id": "postgres",
+            "name": "PostgreSQL",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.6,
+            "position": [
+                240,
+                0
+            ],
+            "onError": "continueErrorOutput"
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ { data: $json.data } }}",
+                "options": {
+                    "responseCode": 201,
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "response",
+            "name": "Response",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.4,
+            "position": [
+                480,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ {error:true, message: $json.error?.message ?? $json.message ?? 'No fue posible completar la operacion'} }}",
+                "options": {
+                    "responseCode": 422,
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "errorResponse",
+            "name": "Error Response",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.4,
+            "position": [
+                240,
+                160
+            ]
         }
-      },
-      "id": "postgres",
-      "name": "PostgreSQL",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [240, 0]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { data: $json.data } }}",
-        "options": {
-          "responseCode": 201,
-          "responseHeaders": {
-            "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }]
-          }
+    ],
+    "connections": {
+        "POST duplicate": {
+            "main": [
+                [
+                    {
+                        "node": "PostgreSQL",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "PostgreSQL": {
+            "main": [
+                [
+                    {
+                        "node": "Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Error Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
         }
-      },
-      "id": "response",
-      "name": "Response",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.4,
-      "position": [480, 0]
-    }
-  ],
-  "connections": {
-    "POST duplicate": {
-      "main": [[{ "node": "PostgreSQL", "type": "main", "index": 0 }]]
     },
-    "PostgreSQL": {
-      "main": [[{ "node": "Response", "type": "main", "index": 0 }]]
-    }
-  },
-  "settings": { "executionOrder": "v1" },
-  "active": false,
-  "versionId": "11000000-0000-4000-8000-000000000007"
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "active": false,
+    "versionId": "11000000-0000-4000-8000-000000000007"
 }

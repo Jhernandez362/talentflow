@@ -1,34 +1,34 @@
 {
-    "id": "FoIfcXEW7JjEvmzG",
-    "name": "TF-ADMIN-06 Change vacancy status",
+    "id": "tf-admin-change-candidate-status",
+    "name": "TF-ADMIN-10 Change candidate status",
     "nodes": [
         {
             "parameters": {
                 "httpMethod": "POST",
-                "path": "admin/vacancies/:id/status",
+                "path": "admin/candidates/:id/status",
                 "responseMode": "responseNode",
                 "options": {}
             },
             "id": "webhook",
-            "name": "POST status",
+            "name": "POST candidate status",
             "type": "n8n-nodes-base.webhook",
             "typeVersion": 2,
             "position": [
                 0,
                 0
             ],
-            "webhookId": "tf-admin-status-vacancy"
+            "webhookId": "tf-admin-change-candidate-status"
         },
         {
             "parameters": {
                 "operation": "executeQuery",
-                "query": "SELECT talentflow.admin_change_vacancy_status($1::uuid, $2::varchar) AS data",
+                "query": "SELECT talentflow.admin_change_candidate_status($1::uuid,$2::jsonb) AS data",
                 "options": {
-                    "queryReplacement": "={{ [$json.params.id, $json.body.status] }}"
+                    "queryReplacement": "={{ [$json.params.id,JSON.stringify($json.body)] }}"
                 }
             },
-            "id": "postgres",
-            "name": "PostgreSQL",
+            "id": "db",
+            "name": "Change status and audit",
             "type": "n8n-nodes-base.postgres",
             "typeVersion": 2.6,
             "position": [
@@ -40,7 +40,7 @@
         {
             "parameters": {
                 "respondWith": "json",
-                "responseBody": "={{ { data: $json.data } }}",
+                "responseBody": "={{ {data:$json.data} }}",
                 "options": {
                     "responseCode": 200,
                     "responseHeaders": {
@@ -83,24 +83,24 @@
             "type": "n8n-nodes-base.respondToWebhook",
             "typeVersion": 1.4,
             "position": [
-                240,
+                480,
                 160
             ]
         }
     ],
     "connections": {
-        "POST status": {
+        "POST candidate status": {
             "main": [
                 [
                     {
-                        "node": "PostgreSQL",
+                        "node": "Change status and audit",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "PostgreSQL": {
+        "Change status and audit": {
             "main": [
                 [
                     {
@@ -123,5 +123,5 @@
         "executionOrder": "v1"
     },
     "active": false,
-    "versionId": "11000000-0000-4000-8000-000000000006"
+    "versionId": "25000000-0000-4000-8000-000000000810"
 }

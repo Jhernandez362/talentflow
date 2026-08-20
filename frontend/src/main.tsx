@@ -22,6 +22,7 @@ import {
 import "./styles.css";
 
 const API_BASE_PATH = "/api";
+const HR_ACTOR_ID = "10000000-0000-4000-8000-000000000001";
 
 type Criterion = {
   id: string;
@@ -235,7 +236,7 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
     ["/admin/dashboard", "Dashboard", LayoutDashboard],
     ["/admin/vacantes", "Vacantes", BriefcaseBusiness],
     ["/admin/candidatos", "Candidatos", Users],
-    ["/admin/revision", "Revision documental", FileSearch],
+    ["/admin/revision-documental", "Revision documental", FileSearch],
     ["/admin/metricas", "Metricas", BarChart3],
     ["/admin/configuracion", "Configuracion", Settings],
   ] as const;
@@ -1975,6 +1976,12 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
       return;
     }
 
+    if (file.size === 0) {
+      setCvFile(null);
+      setCvError("El PDF está vacío.");
+      return;
+    }
+
     if (file.size > 5 * 1024 * 1024) {
       setCvFile(null);
       setCvError("El PDF no puede superar 5 MB.");
@@ -1990,6 +1997,37 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
     setError("");
     setSuccess("");
 
+    const firstName = form.firstName.trim();
+    const lastName = form.lastName.trim();
+    const validName = /^[\p{L}]+(?:[ '\-][\p{L}]+)*$/u;
+    if (firstName.length < 2 || !validName.test(firstName)) {
+      setError("Ingresa un nombre válido, usando únicamente letras, espacios, apóstrofes o guiones.");
+      return;
+    }
+    if (lastName.length < 2 || !validName.test(lastName)) {
+      setError("Ingresa apellidos válidos, usando únicamente letras, espacios, apóstrofes o guiones.");
+      return;
+    }
+
+    const phone = form.phone.trim();
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (!/^\+?[0-9 ().-]+$/.test(phone) || phoneDigits.length < 7 || phoneDigits.length > 15) {
+      setError("Ingresa un teléfono válido de 7 a 15 dígitos. Puedes usar espacios, paréntesis, puntos o guiones.");
+      return;
+    }
+
+    const experienceYears = Number(form.experienceYears);
+    if (!Number.isFinite(experienceYears) || experienceYears < 0 || experienceYears > 80 || !Number.isInteger(experienceYears * 2)) {
+      setError("Los años de experiencia deben estar entre 0 y 80, en incrementos de medio año.");
+      return;
+    }
+
+    const skills = form.skills.split(",").map((skill) => skill.trim()).filter(Boolean);
+    if (!skills.length || skills.length > 30 || skills.some((skill) => skill.length < 2 || skill.length > 80)) {
+      setError("Ingresa entre 1 y 30 tecnologías o conocimientos, separados por coma (2 a 80 caracteres cada uno).");
+      return;
+    }
+
     if (!form.consentAccepted) {
       setError("Debe aceptar el tratamiento de datos para continuar.");
       return;
@@ -2002,7 +2040,7 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
     }
 
     const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-    if (!isPdf || file.size > 5 * 1024 * 1024) {
+    if (!isPdf || file.size === 0 || file.size > 5 * 1024 * 1024) {
       setError("El archivo adjunto no cumple con el formato o tamaño permitido.");
       return;
     }
@@ -2011,12 +2049,12 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
     try {
       const payload = new FormData();
       payload.append("vacancyId", vacancyId);
-      payload.append("firstName", form.firstName.trim());
-      payload.append("lastName", form.lastName.trim());
+      payload.append("firstName", firstName);
+      payload.append("lastName", lastName);
       payload.append("email", form.email.trim());
-      payload.append("phone", form.phone.trim());
-      payload.append("experienceYears", form.experienceYears);
-      payload.append("skills", form.skills);
+      payload.append("phone", phone);
+      payload.append("experienceYears", String(experienceYears));
+      payload.append("skills", skills.join(", "));
       payload.append("consentAccepted", String(form.consentAccepted));
       payload.append("cv", file, file.name);
 
@@ -2094,13 +2132,14 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
               <input
                 value={form.firstName}
                 onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                minLength={2}
                 maxLength={80}
                 required
               />
             </label>
             <label className="field">
               <span>Apellidos</span>
-              <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} maxLength={100} required />
+              <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} minLength={2} maxLength={100} required />
             </label>
             <label className="field">
               <span>Correo electrónico</span>
@@ -2115,9 +2154,15 @@ function ApplicationForm({ vacancyId }: { vacancyId: string }) {
             <label className="field">
               <span>Teléfono</span>
               <input
+                type="tel"
+                inputMode="tel"
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 placeholder="300 123 4567"
+                pattern="[+0-9(). -]{7,25}"
+                title="Usa entre 7 y 15 dígitos; se permiten espacios, paréntesis, puntos y guiones."
+                maxLength={25}
+                required
               />
             </label>
             <label className="field">
@@ -2189,14 +2234,16 @@ function CandidatesList() {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [filters, setFilters] = useState({ search: "", status: "", priority: "", minScore: "", fromDate: "", toDate: "", orderBy: "date", orderDir: "desc" });
 
   useEffect(() => {
     setLoading(true);
-    request("/admin/candidates")
+    const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+    request(`/admin/candidates?${query}`)
       .then((result) => setCandidates(Array.isArray(result) ? result : []))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [filters]);
 
   return (
     <>
@@ -2204,7 +2251,24 @@ function CandidatesList() {
         title="Candidatos"
         subtitle="Listado de postulaciones procesadas y evaluadas"
       />
+      <p className="support-notice">El resultado es una herramienta de apoyo para revisión humana.</p>
       {error && <div className="alert error">{error}</div>}
+      <section className="panel candidate-filters">
+        <input placeholder="Nombre, correo o ticket" value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
+        <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+          <option value="">Todos los estados</option><option>PENDIENTE_REVISION</option><option>EN_REVISION</option><option>ENTREVISTA</option><option>FINALIZADO</option><option>ANALIZADO</option><option>REVISION_DOCUMENTO</option>
+        </select>
+        <select value={filters.priority} onChange={(e) => setFilters({ ...filters, priority: e.target.value })}>
+          <option value="">Todas las prioridades</option><option>ALTA</option><option>MEDIA</option><option>BAJA</option>
+        </select>
+        <input type="number" min="0" max="100" placeholder="Score mínimo" value={filters.minScore} onChange={(e) => setFilters({ ...filters, minScore: e.target.value })} />
+        <input type="date" aria-label="Fecha desde" value={filters.fromDate} onChange={(e) => setFilters({ ...filters, fromDate: e.target.value })} />
+        <input type="date" aria-label="Fecha hasta" value={filters.toDate} onChange={(e) => setFilters({ ...filters, toDate: e.target.value })} />
+        <select value={filters.orderBy} onChange={(e) => setFilters({ ...filters, orderBy: e.target.value })}>
+          <option value="date">Ordenar por fecha</option><option value="score">Ordenar por score</option><option value="name">Ordenar por nombre</option><option value="status">Ordenar por estado</option>
+        </select>
+        <select value={filters.orderDir} onChange={(e) => setFilters({ ...filters, orderDir: e.target.value })}><option value="desc">Descendente</option><option value="asc">Ascendente</option></select>
+      </section>
       <section className="panel table-panel">
         {loading ? (
           <p className="loading">Cargando candidatos...</p>
@@ -2219,6 +2283,8 @@ function CandidatesList() {
                   <th>Score</th>
                   <th>Prioridad</th>
                   <th>Estado</th>
+                  <th>Seniority</th>
+                  <th>Alertas</th>
                   <th>Postulación</th>
                   <th>Acciones</th>
                 </tr>
@@ -2244,6 +2310,8 @@ function CandidatesList() {
                         {c.status || "PENDIENTE_REVISION"}
                       </span>
                     </td>
+                    <td>{c.seniority_fit || "SIN_DATOS"}</td>
+                    <td>{(c.mandatory_missing || []).length ? <span className="alert-inline">Faltan: {(c.mandatory_missing || []).join(", ")}</span> : "—"}</td>
                     <td>
                       {c.applied_at
                         ? new Date(c.applied_at).toLocaleDateString("es-CO")
@@ -2280,14 +2348,53 @@ function CandidateDetail({ id }: { id: string }) {
   const [candidate, setCandidate] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [statusForm, setStatusForm] = useState({ status: "EN_REVISION", observation: "" });
+  const [reviewForm, setReviewForm] = useState({ decision: "PENDING", notes: "" });
+  const [saving, setSaving] = useState(false);
+  const [retrying, setRetrying] = useState<"summary" | "questions" | null>(null);
+  const [retryError, setRetryError] = useState<{ summary?: string; questions?: string }>({});
 
-  useEffect(() => {
+  const loadCandidate = () => {
     setLoading(true);
     request(`/tf-admin-get-candidate/admin/candidates/${id}`)
       .then((result) => setCandidate(result || null))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [id]);
+  };
+  useEffect(loadCandidate, [id]);
+
+  const changeStatus = async () => {
+    setSaving(true); setError("");
+    try {
+      await request(`/tf-admin-change-candidate-status/admin/candidates/${id}/status`, { method: "POST", body: JSON.stringify({ ...statusForm, actorId: HR_ACTOR_ID }) });
+      loadCandidate();
+    } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
+  };
+  const saveReview = async () => {
+    setSaving(true); setError("");
+    try {
+      await request(`/tf-admin-record-hr-review/admin/candidates/${id}/reviews`, { method: "POST", body: JSON.stringify({ ...reviewForm, actorId: HR_ACTOR_ID }) });
+      setReviewForm({ ...reviewForm, notes: "" }); loadCandidate();
+    } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
+  };
+  const retryAnalysis = async (kind: "summary" | "questions") => {
+    setRetrying(kind);
+    setRetryError((prev) => ({ ...prev, [kind]: undefined }));
+    try {
+      const path = kind === "summary" ? "tf-admin-retry-summary/admin/candidates" : "tf-admin-retry-questions/admin/candidates";
+      const action = kind === "summary" ? "retry-summary" : "retry-questions";
+      const result = await request(`/${path}/${id}/${action}`, { method: "POST" });
+      if (result?.status === "FAILED") {
+        setRetryError((prev) => ({ ...prev, [kind]: result.error_message || "El reintento volvió a fallar sin detalle disponible." }));
+      } else {
+        loadCandidate();
+      }
+    } catch (e) {
+      setRetryError((prev) => ({ ...prev, [kind]: (e as Error).message }));
+    } finally {
+      setRetrying(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -2367,7 +2474,10 @@ function CandidateDetail({ id }: { id: string }) {
               <span className="label">Experiencia</span>
               <p>{candidate.experience_years || 0} años</p>
             </div>
+            <div><span className="label">Vacante</span><p>{candidate.vacancy_title}</p></div>
+            <div><span className="label">Fuente del análisis</span><p>{candidate.analysis_source === "MANUAL" ? "Estructurado manualmente por RRHH" : "Extracción IA"}</p></div>
           </div>
+          {candidate.cv?.url && <p><a className="button-link" href={candidate.cv.url} target="_blank" rel="noreferrer">Ver CV privado · {candidate.cv.filename}</a></p>}
         </section>
 
         <section className="panel">
@@ -2390,8 +2500,15 @@ function CandidateDetail({ id }: { id: string }) {
               </span>
             </div>
           </div>
+          <p className="muted">Versión de scoring: {candidate.scoring_version || "—"} · Seniority: {candidate.seniority_fit || "SIN_DATOS"}</p>
+          <p className="support-notice">El resultado es una herramienta de apoyo para revisión humana.</p>
         </section>
       </div>
+
+      <section className="panel review-actions">
+        <div><h2>Cambiar estado</h2><select value={statusForm.status} onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value })}><option>PENDIENTE_REVISION</option><option>EN_REVISION</option><option>ENTREVISTA</option><option>FINALIZADO</option><option>ON_HOLD</option><option>WITHDRAWN</option></select><input placeholder="Observación opcional" value={statusForm.observation} onChange={(e) => setStatusForm({ ...statusForm, observation: e.target.value })}/><button className="primary" disabled={saving} onClick={changeStatus}>Guardar estado</button></div>
+        <div><h2>Revisión humana</h2><select value={reviewForm.decision} onChange={(e) => setReviewForm({ ...reviewForm, decision: e.target.value })}><option>PENDING</option><option>ADVANCE</option><option>HOLD</option><option>REJECT</option><option>REQUEST_INFORMATION</option></select><textarea placeholder="Observaciones de RRHH" value={reviewForm.notes} onChange={(e) => setReviewForm({ ...reviewForm, notes: e.target.value })}/><button className="primary" disabled={saving || !reviewForm.notes.trim()} onClick={saveReview}>Registrar revisión</button></div>
+      </section>
 
       {habilidades.length > 0 && (
         <section className="panel">
@@ -2400,7 +2517,7 @@ function CandidateDetail({ id }: { id: string }) {
             {habilidades.map((skill: any, idx: number) => (
               <div key={idx} className="skill-tag">
                 <span>{skill.nombre}</span>
-                {skill.evidencia_laboral && <small>Laboral</small>}
+                <small>{skill.evidencia_laboral ? "✓ evidencia laboral" : "○ sin evidencia laboral"}</small>
               </div>
             ))}
           </div>
@@ -2419,38 +2536,88 @@ function CandidateDetail({ id }: { id: string }) {
             </div>
             {criterios.map((crit: any, idx: number) => (
               <div key={idx} className="criteria-row">
-                <span>{crit.nombre}</span>
-                <span>{crit.peso}</span>
-                <span>{crit.puntos}</span>
-                <span>{crit.cumple ? "✓" : "✗"}</span>
+                <span>{crit.nombre || crit.criterion}</span>
+                <span>{crit.peso ?? crit.weight}</span>
+                <span>{crit.puntos ?? crit.points} / {crit.peso ?? crit.weight}</span>
+                <span>{(crit.cumple ?? crit.matched) ? "✓" : "✗"}</span>
               </div>
             ))}
           </div>
         </section>
       )}
 
-      {candidate.resumen && (
-        <section className="panel">
-          <h2>Resumen profesional (IA)</h2>
-          <p className="summary-text">{candidate.resumen}</p>
-        </section>
-      )}
+      <div className="detail-grid">
+        <section className="panel"><h2>Deseables</h2>{(candidate.desirables || []).map((x:any) => <p key={x.name}>{x.name} {x.found ? "✓" : "✗"}</p>)}</section>
+        <section className="panel"><h2>Valor agregado</h2>{(candidate.added_values || []).map((x:any) => <p key={x.name}>{x.name} {x.found ? "✓" : "✗"}</p>)}</section>
+      </div>
 
-      {preguntas.length > 0 && (
-        <section className="panel">
+      <section className="panel"><h2>Análisis estructurado</h2><div className="detail-grid"><div><h3>Experiencia</h3>{(candidate.experiencias || []).map((x:any,i:number)=><p key={i}>{x.cargo} · {x.empresa}</p>)}</div><div><h3>Educación</h3>{(candidate.educacion || []).map((x:any,i:number)=><p key={i}>{x.titulo || x.nivel}</p>)}</div><div><h3>Cursos</h3>{(candidate.cursos || []).map((x:any,i:number)=><p key={i}>{x.nombre || String(x)}</p>)}</div><div><h3>Certificaciones</h3>{(candidate.certificaciones || []).map((x:any,i:number)=><p key={i}>{x.nombre || String(x)}</p>)}</div></div></section>
+
+      <section className="panel">
+        <div className="panel-header-row">
+          <h2>Resumen profesional (IA)</h2>
+          <button className="secondary" disabled={retrying === "summary"} onClick={() => retryAnalysis("summary")}>
+            {retrying === "summary" ? "Reintentando..." : "Reintentar resumen"}
+          </button>
+        </div>
+        {candidate.resumen ? (
+          <p className="summary-text">{candidate.resumen}</p>
+        ) : (
+          <p className="empty-hint">Aún no hay resumen disponible.</p>
+        )}
+        {retryError.summary && <div className="alert error">{retryError.summary}</div>}
+      </section>
+
+      <section className="panel">
+        <div className="panel-header-row">
           <h2>Preguntas sugeridas para entrevista</h2>
+          <button className="secondary" disabled={retrying === "questions"} onClick={() => retryAnalysis("questions")}>
+            {retrying === "questions" ? "Reintentando..." : "Reintentar preguntas"}
+          </button>
+        </div>
+        {preguntas.length > 0 ? (
           <ol className="questions-list">
             {preguntas.map((q: any, idx: number) => (
               <li key={idx}>
-                <strong>{q.tema}</strong>
-                <p>{q.pregunta}</p>
+                <strong>{q.tema || q.topic}</strong>
+                <p>{q.pregunta || q.question}</p>
+                {q.topic && <small>Tema: {q.topic}</small>}
+                {q.evidence && <small> · Evidencia: {q.evidence}</small>}
+                {q.experience_id && <small> · Experiencia: {q.experience_id}</small>}
               </li>
             ))}
           </ol>
-        </section>
-      )}
+        ) : (
+          <p className="empty-hint">Aún no hay preguntas disponibles.</p>
+        )}
+        {retryError.questions && <div className="alert error">{retryError.questions}</div>}
+      </section>
+      {(candidate.reviews || []).length > 0 && <section className="panel"><h2>Historial de revisión humana</h2>{candidate.reviews.map((r:any,i:number)=><p key={i}><strong>{r.decision}</strong> · {r.reviewer} · {new Date(r.reviewed_at).toLocaleString("es-CO")}<br/>{r.notes}</p>)}</section>}
+      {(candidate.status_history || []).length > 0 && <section className="panel"><h2>Auditoría de estados</h2>{candidate.status_history.map((h:any,i:number)=><p key={i}>{h.previous} → <strong>{h.new}</strong> · {h.actor} · {new Date(h.changed_at).toLocaleString("es-CO")} {h.observation ? `· ${h.observation}` : ""}</p>)}</section>}
     </>
   );
+}
+
+function DocumentReview() {
+  const [items, setItems] = useState<any[]>([]);
+  const [selected, setSelected] = useState<any>(null);
+  const [form, setForm] = useState({ experienceYears: "", experiences: "", skills: "", education: "", courses: "", certifications: "" });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const load = () => request("/tf-admin-document-reviews/admin/document-reviews").then((data) => setItems(Array.isArray(data) ? data : [])).catch((e) => setError(e.message));
+  useEffect(load, []);
+  const comma = (value:string) => value.split(",").map((x) => x.trim()).filter(Boolean);
+  const save = async () => {
+    if (!selected) return;
+    setError(""); setMessage("");
+    try {
+      const experiences = form.experiences.split("\n").map((line, index) => { const [empresa = "", cargo = "", funcion = ""] = line.split("|").map((x) => x.trim()); return { id: `manual_exp_${index + 1}`, empresa, cargo, funciones: funcion ? [funcion] : [], tecnologias: comma(form.skills) }; }).filter((x) => x.empresa || x.cargo);
+      const body = { actorId: HR_ACTOR_ID, experienceYears: Number(form.experienceYears || 0), experiences, skills: comma(form.skills).map((nombre) => ({ nombre, evidencia_laboral: false, experiencia_ids: [] })), education: comma(form.education).map((titulo) => ({ titulo })), courses: comma(form.courses).map((nombre) => ({ nombre })), certifications: comma(form.certifications).map((nombre) => ({ nombre })) };
+      await request(`/tf-admin-manual-analysis/admin/document-reviews/${selected.id}/manual-analysis`, { method: "POST", body: JSON.stringify(body) });
+      setMessage("Información manual guardada. Scoring, resumen y preguntas fueron iniciados."); setSelected(null); load();
+    } catch (e) { setError((e as Error).message); }
+  };
+  return <><PageTitle title="Revisión documental" subtitle="Solo documentos con autorización expresa del postulante"/>{error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}<section className="panel table-panel"><div className="table-wrap"><table><thead><tr><th>Ticket</th><th>Candidato</th><th>Vacante</th><th>Intentos</th><th>Motivo</th><th>Fecha</th><th>CV</th><th>Acción</th></tr></thead><tbody>{items.map((x)=><tr key={x.id}><td>{x.ticket}</td><td>{x.candidate}</td><td>{x.vacancy}</td><td>{x.attempts}</td><td>{x.reason || "PDF no procesable"}</td><td>{x.requested_at ? new Date(x.requested_at).toLocaleDateString("es-CO") : "—"}</td><td>{x.cv_url ? <a href={x.cv_url} target="_blank" rel="noreferrer">Ver CV</a> : "—"}</td><td><button className="secondary" onClick={()=>setSelected(x)}>Estructurar</button></td></tr>)}</tbody></table>{!items.length && <div className="empty-state"><FileSearch/><h2>No hay documentos autorizados pendientes</h2></div>}</div></section>{selected && <section className="panel manual-analysis-form"><h2>Análisis manual · {selected.ticket}</h2><p className="support-notice">La información se guardará con fuente MANUAL, no como extracción IA.</p><label className="field"><span>Años de experiencia</span><input type="number" min="0" step="0.5" value={form.experienceYears} onChange={(e)=>setForm({...form,experienceYears:e.target.value})}/></label><label className="field"><span>Empresas, cargos y funciones</span><textarea placeholder="Empresa | Cargo | Función (una experiencia por línea)" value={form.experiences} onChange={(e)=>setForm({...form,experiences:e.target.value})}/></label><label className="field"><span>Tecnologías</span><input placeholder="Unity, C#, SQL" value={form.skills} onChange={(e)=>setForm({...form,skills:e.target.value})}/></label><label className="field"><span>Educación</span><input value={form.education} onChange={(e)=>setForm({...form,education:e.target.value})}/></label><label className="field"><span>Cursos</span><input value={form.courses} onChange={(e)=>setForm({...form,courses:e.target.value})}/></label><label className="field"><span>Certificaciones</span><input value={form.certifications} onChange={(e)=>setForm({...form,certifications:e.target.value})}/></label><button className="primary" onClick={save}>Guardar y continuar análisis</button></section>}</>;
 }
 
 function App() {
@@ -2467,6 +2634,7 @@ function App() {
   else if (path === "/admin/vacantes") page = <VacancyList />;
   else if (path === "/admin/vacantes/nueva") page = <Wizard />;
   else if (path === "/admin/candidatos") page = <CandidatesList />;
+  else if (path === "/admin/revision-documental") page = <DocumentReview />;
   else {
     const match = path.match(/^\/vacantes\/([0-9a-f-]+)$/);
     if (match) page = <VacancyDetail id={match[1]} />;

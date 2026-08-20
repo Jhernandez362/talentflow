@@ -1,0 +1,92 @@
+{
+    "id": "tf-admin-document-reviews",
+    "name": "TF-ADMIN-12 Document reviews",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "GET",
+                "path": "admin/document-reviews",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook",
+            "name": "GET document reviews",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                0,
+                0
+            ],
+            "webhookId": "tf-admin-document-reviews"
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT talentflow.admin_list_document_reviews() AS data",
+                "options": {}
+            },
+            "id": "db",
+            "name": "List authorized reviews",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.6,
+            "position": [
+                240,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ {data:$json.data} }}",
+                "options": {
+                    "responseCode": 200,
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "response",
+            "name": "Response",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.4,
+            "position": [
+                480,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "GET document reviews": {
+            "main": [
+                [
+                    {
+                        "node": "List authorized reviews",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "List authorized reviews": {
+            "main": [
+                [
+                    {
+                        "node": "Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "active": false,
+    "versionId": "25000000-0000-4000-8000-000000000812"
+}

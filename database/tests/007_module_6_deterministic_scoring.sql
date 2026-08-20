@@ -49,8 +49,12 @@ BEGIN
 
     INSERT INTO talentflow.candidates(id, email, full_name)
     VALUES(candidate_id, candidate_id || '@module6.test', 'Candidato Modulo 6');
-    INSERT INTO talentflow.applications(id, vacancy_id, candidate_id, status, source)
-    VALUES(application_id, vacancy_id, candidate_id, 'RECEIVED', 'MODULE-6-TEST');
+    INSERT INTO talentflow.applications(id, vacancy_id, candidate_id, ticket_id, status, source)
+    VALUES(
+        application_id, vacancy_id, candidate_id,
+        'TF-M6-' || left(application_id::text, 8),
+        'RECEIVED', 'MODULE-6-TEST'
+    );
     INSERT INTO talentflow.ai_analyses(id, application_id, analysis_type, status, structured_output)
     VALUES(analysis_id, application_id, 'CV_EXTRACTION', 'SUCCEEDED',
       '{"experiencia_total_anios":1,"experiencias":[],"educacion":[{"nivel":"TECNICO"}],"cursos":[],"certificaciones":[],"idiomas":[],"habilidades":[{"nombre":"ReactJS","evidencia_laboral":true,"experiencia_ids":[]}],"habilidades_declaradas_no_verificadas":[],"advertencias":[]}'::jsonb);
