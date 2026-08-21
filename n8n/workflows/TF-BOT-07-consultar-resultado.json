@@ -1,0 +1,16 @@
+{
+  "id": "tf-bot-07-consultar-resultado",
+  "name": "TF-BOT-07 Consultar resultado",
+  "nodes": [
+    { "parameters": { "workflowInputs": { "values": [{ "name": "postulacion", "type": "string" }] } }, "id": "input", "name": "Input postulacion", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1, "position": [0, 0] },
+    { "parameters": { "jsCode": "const value = String($json.postulacion ?? '').trim();\nif (!value) throw new Error('BOT_TOOL_INVALID_INPUT: se requiere el id de postulacion o numero de ticket');\nif (value.length > 100) throw new Error('BOT_TOOL_INVALID_INPUT: valor de postulacion demasiado largo');\nreturn [{ json: { postulacion: value } }];" }, "id": "validate", "name": "Validate input", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [240, 0] },
+    { "parameters": { "operation": "executeQuery", "query": "SELECT postulacion_id, ticket_id, candidato, vacante, estado, score, prioridad_compatibilidad, algorithm_version, result_breakdown, calculated_at, resumen_profesional, preguntas_sugeridas FROM talentflow.vw_bot_resultados WHERE postulacion_id::text = $1 OR ticket_id = $1 LIMIT 1", "options": { "queryReplacement": "={{ [$json.postulacion] }}" } }, "id": "query", "name": "Consultar resultado", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "alwaysOutputData": true, "position": [480, 0] }
+  ],
+  "connections": {
+    "Input postulacion": { "main": [[{ "node": "Validate input", "type": "main", "index": 0 }]] },
+    "Validate input": { "main": [[{ "node": "Consultar resultado", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "27000000-0000-4000-8000-000000000907"
+}

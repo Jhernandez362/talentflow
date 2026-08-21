@@ -1,0 +1,16 @@
+{
+  "id": "tf-bot-01-buscar-candidato",
+  "name": "TF-BOT-01 Buscar candidato",
+  "nodes": [
+    { "parameters": { "workflowInputs": { "values": [{ "name": "termino", "type": "string" }] } }, "id": "input", "name": "Input termino", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1, "position": [0, 0] },
+    { "parameters": { "jsCode": "const value = String($json.termino ?? '').trim();\nif (!value) throw new Error('BOT_TOOL_INVALID_INPUT: se requiere un nombre o correo para buscar');\nif (value.length > 200) throw new Error('BOT_TOOL_INVALID_INPUT: termino de busqueda demasiado largo');\nreturn [{ json: { termino: value } }];" }, "id": "validate", "name": "Validate input", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [240, 0] },
+    { "parameters": { "operation": "executeQuery", "query": "SELECT postulacion_id, ticket_id, candidato, email, phone, vacancy_id, vacante, vacante_codigo, estado, prioridad, applied_at, score, prioridad_compatibilidad FROM talentflow.vw_bot_candidatos WHERE candidato ILIKE '%'||$1||'%' OR email ILIKE '%'||$1||'%' ORDER BY applied_at DESC LIMIT 10", "options": { "queryReplacement": "={{ [$json.termino] }}" } }, "id": "query", "name": "Buscar candidato", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "alwaysOutputData": true, "position": [480, 0] }
+  ],
+  "connections": {
+    "Input termino": { "main": [[{ "node": "Validate input", "type": "main", "index": 0 }]] },
+    "Validate input": { "main": [[{ "node": "Buscar candidato", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "27000000-0000-4000-8000-000000000901"
+}

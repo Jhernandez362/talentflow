@@ -1,0 +1,16 @@
+{
+  "id": "tf-bot-04-candidatos-pendientes",
+  "name": "TF-BOT-04 Candidatos pendientes",
+  "nodes": [
+    { "parameters": { "workflowInputs": { "values": [{ "name": "vacante", "type": "string" }] } }, "id": "input", "name": "Input filtro opcional", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1, "position": [0, 0] },
+    { "parameters": { "jsCode": "let vacante = $json.vacante;\nvacante = (vacante === undefined || vacante === null || vacante === '') ? null : String(vacante).trim();\nif (vacante !== null && vacante.length > 200) throw new Error('BOT_TOOL_INVALID_INPUT: valor de vacante demasiado largo');\nreturn [{ json: { vacante } }];" }, "id": "validate", "name": "Validate input", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [240, 0] },
+    { "parameters": { "operation": "executeQuery", "query": "SELECT postulacion_id, ticket_id, candidato, vacante, estado, prioridad, revision_manual_autorizada, manual_review_reason, applied_at, updated_at FROM talentflow.vw_bot_pendientes WHERE ($1::text IS NULL OR vacante ILIKE '%'||$1||'%') ORDER BY applied_at ASC LIMIT 20", "options": { "queryReplacement": "={{ [$json.vacante] }}" } }, "id": "query", "name": "Candidatos pendientes", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "alwaysOutputData": true, "position": [480, 0] }
+  ],
+  "connections": {
+    "Input filtro opcional": { "main": [[{ "node": "Validate input", "type": "main", "index": 0 }]] },
+    "Validate input": { "main": [[{ "node": "Candidatos pendientes", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "27000000-0000-4000-8000-000000000904"
+}

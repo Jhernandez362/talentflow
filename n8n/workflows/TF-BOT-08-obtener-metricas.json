@@ -1,0 +1,16 @@
+{
+  "id": "tf-bot-08-obtener-metricas",
+  "name": "TF-BOT-08 Obtener metricas",
+  "nodes": [
+    { "parameters": { "workflowInputs": { "values": [{ "name": "vacante", "type": "string" }] } }, "id": "input", "name": "Input filtro opcional", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1, "position": [0, 0] },
+    { "parameters": { "jsCode": "let vacante = $json.vacante;\nvacante = (vacante === undefined || vacante === null || vacante === '') ? null : String(vacante).trim();\nif (vacante !== null && vacante.length > 200) throw new Error('BOT_TOOL_INVALID_INPUT: valor de vacante demasiado largo');\nreturn [{ json: { vacante } }];" }, "id": "validate", "name": "Validate input", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [240, 0] },
+    { "parameters": { "operation": "executeQuery", "query": "SELECT vacancy_id, code, title, vacante_estado, total_postulaciones, pendientes, en_entrevista, finalizados, con_error, score_promedio, score_maximo FROM talentflow.vw_bot_metricas WHERE ($1::text IS NULL OR vacancy_id::text = $1 OR code ILIKE $1 OR title ILIKE '%'||$1||'%') ORDER BY total_postulaciones DESC LIMIT 20", "options": { "queryReplacement": "={{ [$json.vacante] }}" } }, "id": "query", "name": "Obtener metricas", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "alwaysOutputData": true, "position": [480, 0] }
+  ],
+  "connections": {
+    "Input filtro opcional": { "main": [[{ "node": "Validate input", "type": "main", "index": 0 }]] },
+    "Validate input": { "main": [[{ "node": "Obtener metricas", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "27000000-0000-4000-8000-000000000908"
+}

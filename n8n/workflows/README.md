@@ -123,3 +123,71 @@ unicamente a nivel de base de datos. Es el mismo patron ya usado por
 responden `422` con `{"error":true,"message":"..."}` cuando la funcion
 PL/pgSQL o el scoring determinista rechazan la operacion. Ver la nota sobre
 manejo de errores mas arriba en este documento.
+
+## Modulo 9 - Bot hibrido de Telegram (solo lectura)
+
+Asistente interno de RRHH en Telegram con botones rapidos y lenguaje natural.
+**El bot es exclusivamente de lectura**: ninguna de sus tools puede insertar,
+actualizar, eliminar ni modificar el esquema. Prompt formal en
+[`n8n/prompts/PROMPT-BOT-01-telegram.md`](../prompts/PROMPT-BOT-01-telegram.md).
+
+### Defensa en profundidad
+
+1. **Rol Postgres dedicado**: `talentflow_bot_readonly` (migracion
+   `database/migrations/027_module_9_telegram_bot_readonly.sql`). Sin
+   `SUPERUSER`/`CREATEDB`/`CREATEROLE`, `default_transaction_read_only = on`
+   a nivel de rol (bloquea cualquier escritura aunque una tool tuviera un bug),
+   `statement_timeout = 5s`.
+2. **Solo SELECT sobre vistas permitidas**: el rol no tiene ningun permiso
+   sobre tablas base ni sobre el esquema `public` (tablas internas de n8n).
+3. **Vistas especificas** (`vw_bot_*`), exponen unicamente los campos
+   necesarios para RRHH: `vw_bot_candidatos`, `vw_bot_vacantes`,
+   `vw_bot_resultados`, `vw_bot_pendientes`, `vw_bot_metricas`,
+   `vw_bot_authorized_users`.
+4. **Tools/subworkflows controlados**: `TF-BOT-01` a `TF-BOT-08`, cada uno
+   con su propio nodo de validacion de parametros antes de consultar.
+5. **Queries parametrizadas**: mismo patron `queryReplacement` que el resto
+   del proyecto, nunca concatenacion de texto del usuario dentro del SQL.
+6. **Prompt restrictivo**: el AI Agent nunca construye SQL libre; solo puede
+   invocar las 8 tools conectadas, cada una atada a una vista de solo lectura.
+
+### Workflows
+
+| Workflow | Rol |
+|---|---|
+| `TF-BOT-00-telegram-assistant.json` | Orquestador: Telegram Trigger, autorizacion, botones deterministas, AI Agent (Gemini + fallback Groq) con las 8 tools y memoria de ventana por `chat_id`. |
+| `TF-BOT-01-buscar-candidato.json` | Tool `buscar_candidato` — nombre o correo. |
+| `TF-BOT-02-listar-candidatos.json` | Tool `listar_candidatos` — filtro opcional de estado. |
+| `TF-BOT-03-candidatos-por-vacante.json` | Tool `candidatos_por_vacante`. |
+| `TF-BOT-04-candidatos-pendientes.json` | Tool `candidatos_pendientes`. |
+| `TF-BOT-05-consultar-vacante.json` | Tool `consultar_vacante`. |
+| `TF-BOT-06-listar-vacantes.json` | Tool `listar_vacantes` — filtro opcional de estado. |
+| `TF-BOT-07-consultar-resultado.json` | Tool `consultar_resultado` — score, resumen, preguntas sugeridas. |
+| `TF-BOT-08-obtener-metricas.json` | Tool `obtener_metricas` — agregados por vacante. |
+
+### Autorizacion de usuarios de Telegram
+
+Nunca se valida por `username` (puede cambiar). Antes de procesar cualquier
+mensaje, `TF-BOT-00` consulta `vw_bot_authorized_users` por `telegram_user_id`
+numerico. Para autorizar un usuario, un admin inserta en
+`talentflow.bot_authorized_telegram_users` (tabla administrada por la app
+principal, no por el bot):
+
+```sql
+INSERT INTO talentflow.bot_authorized_telegram_users
+  (telegram_user_id, hr_user_id, telegram_display_name, added_by)
+VALUES (123456789, '<hr_users.id>', 'Nombre visible', '<hr_users.id>');
+```
+
+### Configuracion requerida (credenciales, nunca en el repo)
+
+1. **Postgres de solo lectura**: nueva credencial en n8n → Postgres → host
+   `postgres`, puerto `5432`, base `talentflow`, usuario
+   `talentflow_bot_readonly`, contrasena generada al aplicar la migracion 027
+   (no se versiona). Asignarla a los 8 nodos `Postgres` de `TF-BOT-01`..`08`
+   y al nodo `Check authorization` de `TF-BOT-00`.
+2. **Telegram Bot API**: crear el bot con [@BotFather](https://t.me/BotFather),
+   crear la credencial `telegramApi` en n8n con el token, asignarla al
+   `Telegram Trigger` y a los 4 nodos `Telegram` de `TF-BOT-00`.
+3. Activar `TF-BOT-00-telegram-assistant` (los 8 subworkflows `TF-BOT-01..08`
+   no necesitan activarse: se invocan como subworkflow/tool, no por webhook).

@@ -8,6 +8,11 @@
       "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1, "position": [0, 0]
     },
     {
+      "parameters": { "jsCode": "return [{ json: { ...$json, ia01_started_at: Date.now() } }];" },
+      "id": "stamp-ia01-start", "name": "Stamp IA01 start",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [120, 0]
+    },
+    {
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT talentflow.ia01_begin_analysis($1::uuid, $2, $3) AS data",
@@ -44,13 +49,12 @@
     },
     {
       "parameters": {
-        "promptType": "define", "text": "={{ $json.prompt }}", "hasOutputParser": true,
+        "promptType": "define", "text": "={{ $json.prompt }}", "hasOutputParser": true, "needsFallback": true,
         "batching": { "batchSize": 1, "delayBetweenBatches": 0 }
       },
       "id": "ia01", "name": "IA-01 Extractor",
       "type": "@n8n/n8n-nodes-langchain.chainLlm", "typeVersion": 1.9,
-      "position": [1200, 0], "retryOnFail": true, "maxTries": 3,
-      "waitBetweenTries": 1000, "onError": "continueRegularOutput"
+      "position": [1200, 0], "retryOnFail": false, "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -63,9 +67,17 @@
     },
     {
       "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": { "temperature": 0.1, "maxTokensToSample": 4096 }
+      },
+      "id": "groq-fallback-model", "name": "Groq GPT-OSS 20B (fallback)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq", "typeVersion": 1, "position": [1120, 420]
+    },
+    {
+      "parameters": {
         "schemaType": "manual",
         "inputSchema": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"experiencia_total_anios\",\"experiencias\",\"educacion\",\"cursos\",\"certificaciones\",\"idiomas\",\"habilidades\",\"habilidades_declaradas_no_verificadas\",\"advertencias\"],\"properties\":{\"experiencia_total_anios\":{\"type\":[\"number\",\"null\"],\"minimum\":0,\"maximum\":80},\"experiencias\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"empresa\",\"cargo\",\"fecha_inicio\",\"fecha_fin\",\"duracion_meses\",\"funciones\",\"tecnologias\"],\"properties\":{\"id\":{\"type\":\"string\"},\"empresa\":{\"type\":[\"string\",\"null\"]},\"cargo\":{\"type\":[\"string\",\"null\"]},\"fecha_inicio\":{\"type\":[\"string\",\"null\"]},\"fecha_fin\":{\"type\":[\"string\",\"null\"]},\"duracion_meses\":{\"type\":[\"integer\",\"null\"],\"minimum\":0},\"funciones\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"tecnologias\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}},\"educacion\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"titulo\",\"nivel\",\"institucion\",\"fecha\"],\"properties\":{\"titulo\":{\"type\":[\"string\",\"null\"]},\"nivel\":{\"type\":[\"string\",\"null\"]},\"institucion\":{\"type\":[\"string\",\"null\"]},\"fecha\":{\"type\":[\"string\",\"null\"]}}}},\"cursos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"nombre\",\"institucion\",\"fecha\"],\"properties\":{\"nombre\":{\"type\":[\"string\",\"null\"]},\"institucion\":{\"type\":[\"string\",\"null\"]},\"fecha\":{\"type\":[\"string\",\"null\"]}}}},\"certificaciones\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"idiomas\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"habilidades\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"nombre\",\"evidencia_laboral\",\"experiencia_ids\"],\"properties\":{\"nombre\":{\"type\":\"string\"},\"evidencia_laboral\":{\"type\":\"boolean\"},\"experiencia_ids\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}},\"habilidades_declaradas_no_verificadas\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"advertencias\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}",
-        "autoFix": false
+        "autoFix": true
       },
       "id": "structured-parser", "name": "IA-01 Structured Output",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured", "typeVersion": 1.3, "position": [1360, 240]
@@ -144,15 +156,40 @@
       "position": [2440, -100]
     },
     {
+      "parameters": { "jsCode": "const startedAt = $('Stamp IA01 start').item.json.ia01_started_at;\nconst elapsedMs = Date.now() - startedAt;\nconst waitSeconds = Math.max(0, Math.ceil((35000 - elapsedMs) / 1000));\nreturn [{ json: { ...$json, waitSecondsIA02: waitSeconds } }];" },
+      "id": "compute-wait-ia02", "name": "Compute wait before IA-02",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [2680, -180]
+    },
+    {
+      "parameters": { "resume": "timeInterval", "amount": "={{ $json.waitSecondsIA02 }}", "unit": "seconds" },
+      "id": "wait-before-ia02", "name": "Wait before IA-02",
+      "type": "n8n-nodes-base.wait", "typeVersion": 1.1, "position": [2900, -180], "webhookId": "15000000-0000-4000-8000-000000000502"
+    },
+    {
+      "parameters": { "jsCode": "return [{ json: { ...$json, ia02_started_at: Date.now() } }];" },
+      "id": "stamp-ia02-start", "name": "Stamp IA02 start",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [3120, -180]
+    },
+    {
       "parameters": {
         "source": "database",
         "workflowId": { "__rl": true, "value": "tf-m7-ia02-summary", "mode": "list", "cachedResultName": "WF-IA02-RESUMEN" },
         "workflowInputs": { "mappingMode": "defineBelow", "value": { "postulacion_id": "={{ $('Input postulacion_id').first().json.postulacion_id }}" }, "matchingColumns": [], "schema": [{ "id": "postulacion_id", "displayName": "postulacion_id", "required": true, "display": true, "canBeUsedToMatch": true, "type": "string" }], "attemptToConvertTypes": false, "convertFieldsToString": true },
-        "options": { "waitForSubWorkflow": false }
+        "options": { "waitForSubWorkflow": true }
       },
       "id": "execute-ia02", "name": "Execute IA-02 summary",
       "type": "n8n-nodes-base.executeWorkflow", "typeVersion": 1.3,
-      "position": [2680, -180], "onError": "continueRegularOutput"
+      "position": [3340, -180], "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": { "jsCode": "const startedAt = $('Stamp IA02 start').item.json.ia02_started_at;\nconst elapsedMs = Date.now() - startedAt;\nconst waitSeconds = Math.max(0, Math.ceil((35000 - elapsedMs) / 1000));\nreturn [{ json: { ...$json, waitSecondsIA03: waitSeconds } }];" },
+      "id": "compute-wait-ia03", "name": "Compute wait before IA-03",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [3560, -180]
+    },
+    {
+      "parameters": { "resume": "timeInterval", "amount": "={{ $json.waitSecondsIA03 }}", "unit": "seconds" },
+      "id": "wait-before-ia03", "name": "Wait before IA-03",
+      "type": "n8n-nodes-base.wait", "typeVersion": 1.1, "position": [3780, -180], "webhookId": "15000000-0000-4000-8000-000000000503"
     },
     {
       "parameters": {
@@ -163,23 +200,31 @@
       },
       "id": "execute-ia03", "name": "Execute IA-03 questions",
       "type": "n8n-nodes-base.executeWorkflow", "typeVersion": 1.3,
-      "position": [2680, 20], "onError": "continueRegularOutput"
+      "position": [4000, -180], "onError": "continueRegularOutput"
     }
   ],
   "connections": {
-    "Input postulacion_id": { "main": [[{ "node": "Begin IA-01 analysis", "type": "main", "index": 0 }]] },
+    "Input postulacion_id": { "main": [[{ "node": "Stamp IA01 start", "type": "main", "index": 0 }]] },
+    "Stamp IA01 start": { "main": [[{ "node": "Begin IA-01 analysis", "type": "main", "index": 0 }]] },
     "Begin IA-01 analysis": { "main": [[{ "node": "Download valid CV", "type": "main", "index": 0 }]] },
     "Download valid CV": { "main": [[{ "node": "Extract CV text", "type": "main", "index": 0 }]] },
     "Extract CV text": { "main": [[{ "node": "Prepare PROMPT-IA-01-v1", "type": "main", "index": 0 }]] },
     "Prepare PROMPT-IA-01-v1": { "main": [[{ "node": "IA-01 Extractor", "type": "main", "index": 0 }]] },
     "Gemini 3.6 Flash": { "ai_languageModel": [[{ "node": "IA-01 Extractor", "type": "ai_languageModel", "index": 0 }]] },
+    "Groq GPT-OSS 20B (fallback)": { "ai_languageModel": [[{ "node": "IA-01 Extractor", "type": "ai_languageModel", "index": 1 }, { "node": "IA-01 Structured Output", "type": "ai_languageModel", "index": 0 }]] },
     "IA-01 Structured Output": { "ai_outputParser": [[{ "node": "IA-01 Extractor", "type": "ai_outputParser", "index": 0 }]] },
     "IA-01 Extractor": { "main": [[{ "node": "Validate IA-01 output", "type": "main", "index": 0 }]] },
     "Validate IA-01 output": { "main": [[{ "node": "Output is valid", "type": "main", "index": 0 }]] },
     "Output is valid": { "main": [[{ "node": "Record IA-01 success", "type": "main", "index": 0 }], [{ "node": "Record IA-01 failure", "type": "main", "index": 0 }]] },
     "Record IA-01 success": { "main": [[{ "node": "Load scoring input", "type": "main", "index": 0 }]] },
     "Load scoring input": { "main": [[{ "node": "Execute deterministic scoring", "type": "main", "index": 0 }]] },
-    "Execute deterministic scoring": { "main": [[{ "node": "Execute IA-02 summary", "type": "main", "index": 0 }, { "node": "Execute IA-03 questions", "type": "main", "index": 0 }]] }
+    "Execute deterministic scoring": { "main": [[{ "node": "Compute wait before IA-02", "type": "main", "index": 0 }]] },
+    "Compute wait before IA-02": { "main": [[{ "node": "Wait before IA-02", "type": "main", "index": 0 }]] },
+    "Wait before IA-02": { "main": [[{ "node": "Stamp IA02 start", "type": "main", "index": 0 }]] },
+    "Stamp IA02 start": { "main": [[{ "node": "Execute IA-02 summary", "type": "main", "index": 0 }]] },
+    "Execute IA-02 summary": { "main": [[{ "node": "Compute wait before IA-03", "type": "main", "index": 0 }]] },
+    "Compute wait before IA-03": { "main": [[{ "node": "Wait before IA-03", "type": "main", "index": 0 }]] },
+    "Wait before IA-03": { "main": [[{ "node": "Execute IA-03 questions", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" },
   "active": false,

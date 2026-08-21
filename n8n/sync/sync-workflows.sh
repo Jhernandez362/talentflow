@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Evita que Git Bash (MSYS) reescriba rutas /home/node/... como C:/Program Files/Git/home/node/...
+export MSYS_NO_PATHCONV=1
+
 project_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$project_directory"
 

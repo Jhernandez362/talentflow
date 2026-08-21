@@ -387,7 +387,10 @@ function VacancyList() {
       .finally(() => setLoading(false));
   };
   useEffect(load, []);
+  const [actioningId, setActioningId] = useState<string | null>(null);
   const action = async (id: string, type: string) => {
+    if (actioningId) return;
+    setActioningId(id);
     try {
       if (type === "duplicate") {
         const code = prompt("Nuevo codigo para la vacante duplicada");
@@ -404,6 +407,8 @@ function VacancyList() {
       load();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setActioningId(null);
     }
   };
   return (
@@ -480,6 +485,7 @@ function VacancyList() {
                         </button>
                         <button
                           title="Duplicar"
+                          disabled={actioningId === v.id}
                           onClick={() => action(v.id, "duplicate")}
                         >
                           <Copy />
@@ -487,6 +493,7 @@ function VacancyList() {
                         {v.status === "OPEN" && (
                           <button
                             title="Pausar"
+                            disabled={actioningId === v.id}
                             onClick={() => action(v.id, "PAUSED")}
                           >
                             <Pause />
@@ -495,6 +502,7 @@ function VacancyList() {
                         {v.status === "PAUSED" && (
                           <button
                             title="Reabrir"
+                            disabled={actioningId === v.id}
                             onClick={() => action(v.id, "OPEN")}
                           >
                             <RotateCcw />
@@ -503,6 +511,7 @@ function VacancyList() {
                         {!["CLOSED", "COMPLETED"].includes(v.status) && (
                           <button
                             title="Cerrar"
+                            disabled={actioningId === v.id}
                             onClick={() => action(v.id, "CLOSED")}
                           >
                             <X />
@@ -2604,20 +2613,25 @@ function DocumentReview() {
   const [form, setForm] = useState({ experienceYears: "", experiences: "", skills: "", education: "", courses: "", certifications: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const load = () => request("/tf-admin-document-reviews/admin/document-reviews").then((data) => setItems(Array.isArray(data) ? data : [])).catch((e) => setError(e.message));
+  const [saving, setSaving] = useState(false);
+  const load = () => {
+    request("/admin/document-reviews")
+      .then((data) => setItems(Array.isArray(data) ? data : []))
+      .catch((e) => setError(e.message));
+  };
   useEffect(load, []);
   const comma = (value:string) => value.split(",").map((x) => x.trim()).filter(Boolean);
   const save = async () => {
-    if (!selected) return;
-    setError(""); setMessage("");
+    if (!selected || saving) return;
+    setSaving(true); setError(""); setMessage("");
     try {
       const experiences = form.experiences.split("\n").map((line, index) => { const [empresa = "", cargo = "", funcion = ""] = line.split("|").map((x) => x.trim()); return { id: `manual_exp_${index + 1}`, empresa, cargo, funciones: funcion ? [funcion] : [], tecnologias: comma(form.skills) }; }).filter((x) => x.empresa || x.cargo);
       const body = { actorId: HR_ACTOR_ID, experienceYears: Number(form.experienceYears || 0), experiences, skills: comma(form.skills).map((nombre) => ({ nombre, evidencia_laboral: false, experiencia_ids: [] })), education: comma(form.education).map((titulo) => ({ titulo })), courses: comma(form.courses).map((nombre) => ({ nombre })), certifications: comma(form.certifications).map((nombre) => ({ nombre })) };
       await request(`/tf-admin-manual-analysis/admin/document-reviews/${selected.id}/manual-analysis`, { method: "POST", body: JSON.stringify(body) });
       setMessage("Información manual guardada. Scoring, resumen y preguntas fueron iniciados."); setSelected(null); load();
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
-  return <><PageTitle title="Revisión documental" subtitle="Solo documentos con autorización expresa del postulante"/>{error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}<section className="panel table-panel"><div className="table-wrap"><table><thead><tr><th>Ticket</th><th>Candidato</th><th>Vacante</th><th>Intentos</th><th>Motivo</th><th>Fecha</th><th>CV</th><th>Acción</th></tr></thead><tbody>{items.map((x)=><tr key={x.id}><td>{x.ticket}</td><td>{x.candidate}</td><td>{x.vacancy}</td><td>{x.attempts}</td><td>{x.reason || "PDF no procesable"}</td><td>{x.requested_at ? new Date(x.requested_at).toLocaleDateString("es-CO") : "—"}</td><td>{x.cv_url ? <a href={x.cv_url} target="_blank" rel="noreferrer">Ver CV</a> : "—"}</td><td><button className="secondary" onClick={()=>setSelected(x)}>Estructurar</button></td></tr>)}</tbody></table>{!items.length && <div className="empty-state"><FileSearch/><h2>No hay documentos autorizados pendientes</h2></div>}</div></section>{selected && <section className="panel manual-analysis-form"><h2>Análisis manual · {selected.ticket}</h2><p className="support-notice">La información se guardará con fuente MANUAL, no como extracción IA.</p><label className="field"><span>Años de experiencia</span><input type="number" min="0" step="0.5" value={form.experienceYears} onChange={(e)=>setForm({...form,experienceYears:e.target.value})}/></label><label className="field"><span>Empresas, cargos y funciones</span><textarea placeholder="Empresa | Cargo | Función (una experiencia por línea)" value={form.experiences} onChange={(e)=>setForm({...form,experiences:e.target.value})}/></label><label className="field"><span>Tecnologías</span><input placeholder="Unity, C#, SQL" value={form.skills} onChange={(e)=>setForm({...form,skills:e.target.value})}/></label><label className="field"><span>Educación</span><input value={form.education} onChange={(e)=>setForm({...form,education:e.target.value})}/></label><label className="field"><span>Cursos</span><input value={form.courses} onChange={(e)=>setForm({...form,courses:e.target.value})}/></label><label className="field"><span>Certificaciones</span><input value={form.certifications} onChange={(e)=>setForm({...form,certifications:e.target.value})}/></label><button className="primary" onClick={save}>Guardar y continuar análisis</button></section>}</>;
+  return <><PageTitle title="Revisión documental" subtitle="Solo documentos con autorización expresa del postulante"/>{error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}<section className="panel table-panel"><div className="table-wrap"><table><thead><tr><th>Ticket</th><th>Candidato</th><th>Vacante</th><th>Intentos</th><th>Motivo</th><th>Fecha</th><th>CV</th><th>Acción</th></tr></thead><tbody>{items.map((x)=><tr key={x.id}><td>{x.ticket}</td><td>{x.candidate}</td><td>{x.vacancy}</td><td>{x.attempts}</td><td>{x.reason || "PDF no procesable"}</td><td>{x.requested_at ? new Date(x.requested_at).toLocaleDateString("es-CO") : "—"}</td><td>{x.cv_url ? <a href={x.cv_url} target="_blank" rel="noreferrer">Ver CV</a> : "—"}</td><td><button className="secondary" onClick={()=>setSelected(x)}>Estructurar</button></td></tr>)}</tbody></table>{!items.length && <div className="empty-state"><FileSearch/><h2>No hay documentos autorizados pendientes</h2></div>}</div></section>{selected && <section className="panel manual-analysis-form"><h2>Análisis manual · {selected.ticket}</h2><p className="support-notice">La información se guardará con fuente MANUAL, no como extracción IA.</p><label className="field"><span>Años de experiencia</span><input type="number" min="0" step="0.5" value={form.experienceYears} onChange={(e)=>setForm({...form,experienceYears:e.target.value})}/></label><label className="field"><span>Empresas, cargos y funciones</span><textarea placeholder="Empresa | Cargo | Función (una experiencia por línea)" value={form.experiences} onChange={(e)=>setForm({...form,experiences:e.target.value})}/></label><label className="field"><span>Tecnologías</span><input placeholder="Unity, C#, SQL" value={form.skills} onChange={(e)=>setForm({...form,skills:e.target.value})}/></label><label className="field"><span>Educación</span><input value={form.education} onChange={(e)=>setForm({...form,education:e.target.value})}/></label><label className="field"><span>Cursos</span><input value={form.courses} onChange={(e)=>setForm({...form,courses:e.target.value})}/></label><label className="field"><span>Certificaciones</span><input value={form.certifications} onChange={(e)=>setForm({...form,certifications:e.target.value})}/></label><button className="primary" disabled={saving} onClick={save}>{saving ? "Guardando..." : "Guardar y continuar análisis"}</button></section>}</>;
 }
 
 function App() {

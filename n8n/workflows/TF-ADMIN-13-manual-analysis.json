@@ -173,7 +173,7 @@
         {
             "parameters": {
                 "respondWith": "json",
-                "responseBody": "={{ {data:{status:'MANUAL_ANALYSIS_SAVED',analysis_source:'MANUAL'}} }}",
+                "responseBody": "={{ {data:{status:'MANUAL_ANALYSIS_SAVED',analysis_source:'MANUAL'} } }}",
                 "options": {
                     "responseCode": 202,
                     "responseHeaders": {

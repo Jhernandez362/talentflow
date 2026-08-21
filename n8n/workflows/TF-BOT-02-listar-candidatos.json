@@ -1,0 +1,16 @@
+{
+  "id": "tf-bot-02-listar-candidatos",
+  "name": "TF-BOT-02 Listar candidatos",
+  "nodes": [
+    { "parameters": { "workflowInputs": { "values": [{ "name": "estado", "type": "string" }, { "name": "limite", "type": "number" }] } }, "id": "input", "name": "Input filtros", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1, "position": [0, 0] },
+    { "parameters": { "jsCode": "const validStates = ['RECIBIDO','VALIDANDO_DOCUMENTO','REVISION_DOCUMENTO','PROCESANDO','ANALIZADO','ERROR','PENDIENTE_REVISION','EN_REVISION','ENTREVISTA','FINALIZADO','ON_HOLD','WITHDRAWN'];\nlet estado = $json.estado;\nestado = (estado === undefined || estado === null || estado === '') ? null : String(estado).trim().toUpperCase();\nif (estado !== null && !validStates.includes(estado)) throw new Error(`BOT_TOOL_INVALID_INPUT: estado desconocido '${estado}'`);\nlet limite = Number($json.limite);\nif (!Number.isFinite(limite) || limite <= 0) limite = 15;\nlimite = Math.min(Math.trunc(limite), 50);\nreturn [{ json: { estado, limite } }];" }, "id": "validate", "name": "Validate input", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [240, 0] },
+    { "parameters": { "operation": "executeQuery", "query": "SELECT postulacion_id, ticket_id, candidato, email, vacancy_id, vacante, estado, prioridad, applied_at, score, prioridad_compatibilidad FROM talentflow.vw_bot_candidatos WHERE ($1::text IS NULL OR estado = $1) ORDER BY applied_at DESC LIMIT $2", "options": { "queryReplacement": "={{ [$json.estado, $json.limite] }}" } }, "id": "query", "name": "Listar candidatos", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "alwaysOutputData": true, "position": [480, 0] }
+  ],
+  "connections": {
+    "Input filtros": { "main": [[{ "node": "Validate input", "type": "main", "index": 0 }]] },
+    "Validate input": { "main": [[{ "node": "Listar candidatos", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "27000000-0000-4000-8000-000000000902"
+}

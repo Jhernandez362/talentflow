@@ -953,8 +953,6 @@ textarea {
     gap: 15px;
   }
 }
-@media (max-width: 650px) {
-}
 
 /* MVP Candidatos Styles */
 .skills-grid {
@@ -1122,6 +1120,8 @@ textarea {
   gap: 16px;
   margin-bottom: 20px;
 }
+
+@media (max-width: 650px) {
   .page-title {
     align-items: stretch;
     flex-direction: column;

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const workflowDirectory = dirname(fileURLToPath(import.meta.url));
 const workflowFiles = readdirSync(workflowDirectory)
-  .filter((file) => /^(TF-ADMIN|TF-PUBLIC|TF-M4|TF-M5|TF-M6|TF-M7)-.*\.json$/.test(file))
+  .filter((file) => /^(TF-ADMIN|TF-PUBLIC|TF-M4|TF-M5|TF-M6|TF-M7|TF-BOT)-.*\.json$/.test(file))
   .sort();
 
 const errors = [];
@@ -48,5 +48,5 @@ if (errors.length > 0) {
   console.error(errors.join("\n"));
   process.exitCode = 1;
 } else {
-  console.log(`OK: ${workflowFiles.length} workflows ADMIN/PUBLIC/M4/M5/M6/M7 son importables y sus consultas estan parametrizadas.`);
+  console.log(`OK: ${workflowFiles.length} workflows ADMIN/PUBLIC/M4/M5/M6/M7/BOT son importables y sus consultas estan parametrizadas.`);
 }

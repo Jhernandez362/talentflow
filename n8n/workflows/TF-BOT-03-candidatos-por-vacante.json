@@ -1,0 +1,16 @@
+{
+  "id": "tf-bot-03-candidatos-por-vacante",
+  "name": "TF-BOT-03 Candidatos por vacante",
+  "nodes": [
+    { "parameters": { "workflowInputs": { "values": [{ "name": "vacante", "type": "string" }] } }, "id": "input", "name": "Input vacante", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1, "position": [0, 0] },
+    { "parameters": { "jsCode": "const value = String($json.vacante ?? '').trim();\nif (!value) throw new Error('BOT_TOOL_INVALID_INPUT: se requiere el id, codigo o nombre de la vacante');\nif (value.length > 200) throw new Error('BOT_TOOL_INVALID_INPUT: valor de vacante demasiado largo');\nreturn [{ json: { vacante: value } }];" }, "id": "validate", "name": "Validate input", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [240, 0] },
+    { "parameters": { "operation": "executeQuery", "query": "SELECT postulacion_id, ticket_id, candidato, email, vacancy_id, vacante, vacante_codigo, estado, prioridad, applied_at, score, prioridad_compatibilidad FROM talentflow.vw_bot_candidatos WHERE vacancy_id::text = $1 OR vacante_codigo ILIKE $1 OR vacante ILIKE '%'||$1||'%' ORDER BY score DESC NULLS LAST LIMIT 20", "options": { "queryReplacement": "={{ [$json.vacante] }}" } }, "id": "query", "name": "Candidatos por vacante", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "alwaysOutputData": true, "position": [480, 0] }
+  ],
+  "connections": {
+    "Input vacante": { "main": [[{ "node": "Validate input", "type": "main", "index": 0 }]] },
+    "Validate input": { "main": [[{ "node": "Candidatos por vacante", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "27000000-0000-4000-8000-000000000903"
+}
