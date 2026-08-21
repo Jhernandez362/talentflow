@@ -2634,6 +2634,91 @@ function DocumentReview() {
   return <><PageTitle title="Revisión documental" subtitle="Solo documentos con autorización expresa del postulante"/>{error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}<section className="panel table-panel"><div className="table-wrap"><table><thead><tr><th>Ticket</th><th>Candidato</th><th>Vacante</th><th>Intentos</th><th>Motivo</th><th>Fecha</th><th>CV</th><th>Acción</th></tr></thead><tbody>{items.map((x)=><tr key={x.id}><td>{x.ticket}</td><td>{x.candidate}</td><td>{x.vacancy}</td><td>{x.attempts}</td><td>{x.reason || "PDF no procesable"}</td><td>{x.requested_at ? new Date(x.requested_at).toLocaleDateString("es-CO") : "—"}</td><td>{x.cv_url ? <a href={x.cv_url} target="_blank" rel="noreferrer">Ver CV</a> : "—"}</td><td><button className="secondary" onClick={()=>setSelected(x)}>Estructurar</button></td></tr>)}</tbody></table>{!items.length && <div className="empty-state"><FileSearch/><h2>No hay documentos autorizados pendientes</h2></div>}</div></section>{selected && <section className="panel manual-analysis-form"><h2>Análisis manual · {selected.ticket}</h2><p className="support-notice">La información se guardará con fuente MANUAL, no como extracción IA.</p><label className="field"><span>Años de experiencia</span><input type="number" min="0" step="0.5" value={form.experienceYears} onChange={(e)=>setForm({...form,experienceYears:e.target.value})}/></label><label className="field"><span>Empresas, cargos y funciones</span><textarea placeholder="Empresa | Cargo | Función (una experiencia por línea)" value={form.experiences} onChange={(e)=>setForm({...form,experiences:e.target.value})}/></label><label className="field"><span>Tecnologías</span><input placeholder="Unity, C#, SQL" value={form.skills} onChange={(e)=>setForm({...form,skills:e.target.value})}/></label><label className="field"><span>Educación</span><input value={form.education} onChange={(e)=>setForm({...form,education:e.target.value})}/></label><label className="field"><span>Cursos</span><input value={form.courses} onChange={(e)=>setForm({...form,courses:e.target.value})}/></label><label className="field"><span>Certificaciones</span><input value={form.certifications} onChange={(e)=>setForm({...form,certifications:e.target.value})}/></label><button className="primary" disabled={saving} onClick={save}>{saving ? "Guardando..." : "Guardar y continuar análisis"}</button></section>}</>;
 }
 
+function TelegramAccess() {
+  const [form, setForm] = useState({ email: "", telegramUserId: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setMessage("");
+    const email = form.email.trim();
+    const telegramUserId = Number(form.telegramUserId);
+    if (!email) {
+      setError("El correo es obligatorio.");
+      return;
+    }
+    if (!Number.isInteger(telegramUserId) || telegramUserId <= 0) {
+      setError("El ID de Telegram debe ser un número entero positivo.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await request("/admin/telegram-users", {
+        method: "POST",
+        body: JSON.stringify({ actorId: HR_ACTOR_ID, email, telegramUserId }),
+      });
+      setMessage(
+        `Acceso otorgado a ${result.displayName || result.email} (Telegram ID ${result.telegramUserId}).`,
+      );
+      setForm({ email: "", telegramUserId: "" });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <PageTitle
+        title="Configuración"
+        subtitle="Administra el acceso al asistente de RRHH en Telegram"
+      />
+      <section className="panel">
+        <h2>Otorgar acceso al bot de Telegram</h2>
+        <p className="support-notice">
+          El correo debe pertenecer a un usuario RRHH activo. Para obtener el ID de
+          Telegram, la persona debe escribirle a @userinfobot en Telegram.
+        </p>
+        {error && <div className="alert error">{error}</div>}
+        {message && <div className="alert success">{message}</div>}
+        <form onSubmit={submit} className="form-grid">
+          <label className="field">
+            <span>Correo</span>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="nombre@empresa.com"
+              required
+            />
+          </label>
+          <label className="field">
+            <span>ID de Telegram</span>
+            <input
+              type="number"
+              min="1"
+              value={form.telegramUserId}
+              onChange={(e) => setForm({ ...form, telegramUserId: e.target.value })}
+              placeholder="123456789"
+              required
+            />
+          </label>
+          <div className="wizard-actions">
+            <button type="submit" className="primary" disabled={saving}>
+              <Check />
+              {saving ? "Guardando..." : "Otorgar acceso"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </>
+  );
+}
+
 function App() {
   const [path, setPath] = useState(location.pathname);
   useEffect(() => {
@@ -2649,6 +2734,7 @@ function App() {
   else if (path === "/admin/vacantes/nueva") page = <Wizard />;
   else if (path === "/admin/candidatos") page = <CandidatesList />;
   else if (path === "/admin/revision-documental") page = <DocumentReview />;
+  else if (path === "/admin/configuracion") page = <TelegramAccess />;
   else {
     const match = path.match(/^\/vacantes\/([0-9a-f-]+)$/);
     if (match) page = <VacancyDetail id={match[1]} />;

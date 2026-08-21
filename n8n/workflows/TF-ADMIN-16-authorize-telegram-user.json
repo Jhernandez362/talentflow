@@ -1,0 +1,189 @@
+{
+    "id": "tf-admin-authorize-telegram-user",
+    "name": "TF-ADMIN-16 Authorize Telegram user",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "admin/telegram-users",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook",
+            "name": "POST Telegram user",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                0,
+                0
+            ],
+            "webhookId": "tf-admin-authorize-telegram-user"
+        },
+        {
+            "parameters": {
+                "jsCode": "const p=$json.body??$json; const tgId=Number(p.telegramUserId); if(!Number.isInteger(tgId)||tgId<=0) throw new Error('telegramUserId debe ser un entero positivo'); if(!String(p.email??'').trim()) throw new Error('email es obligatorio'); if(!String(p.actorId??'').trim()) throw new Error('actorId es obligatorio'); return [{json:{payload:p}}];"
+            },
+            "id": "validate",
+            "name": "Validate payload",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                220,
+                0
+            ],
+            "onError": "continueErrorOutput"
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT talentflow.admin_authorize_telegram_user($1::jsonb) AS data",
+                "options": {
+                    "queryReplacement": "={{ [JSON.stringify($json.payload)] }}"
+                }
+            },
+            "id": "db",
+            "name": "Authorize Telegram user",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.6,
+            "position": [
+                460,
+                0
+            ],
+            "onError": "continueErrorOutput"
+        },
+        {
+            "parameters": {
+                "fromEmail": "TalentFlow RRHH <notificaciones@talentflow.local>",
+                "toEmail": "={{ $json.data.email }}",
+                "subject": "Acceso otorgado al asistente de Telegram de TalentFlow",
+                "emailFormat": "text",
+                "text": "=Hola {{ $json.data.displayName || '' }},\n\nSe otorgo acceso al asistente de RRHH en Telegram para tu cuenta ({{ $json.data.email }}).\n\nID de Telegram autorizado: {{ $json.data.telegramUserId }}\n\nSi no reconoces esta solicitud, contacta al equipo de RRHH.",
+                "options": {}
+            },
+            "id": "notify",
+            "name": "Send access email",
+            "type": "n8n-nodes-base.emailSend",
+            "typeVersion": 2.1,
+            "position": [
+                700,
+                0
+            ],
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ { data: $('Authorize Telegram user').item.json.data } }}",
+                "options": {
+                    "responseCode": 200,
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "response",
+            "name": "Response",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.4,
+            "position": [
+                940,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ {error:true, message: (typeof $json.error === 'string' ? $json.error : $json.error?.message) ?? $json.message ?? 'No fue posible completar la operacion'} }}",
+                "options": {
+                    "responseCode": 422,
+                    "responseHeaders": {
+                        "entries": [
+                            {
+                                "name": "Access-Control-Allow-Origin",
+                                "value": "*"
+                            }
+                        ]
+                    }
+                }
+            },
+            "id": "errorResponse",
+            "name": "Error Response",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.4,
+            "position": [
+                220,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "POST Telegram user": {
+            "main": [
+                [
+                    {
+                        "node": "Validate payload",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validate payload": {
+            "main": [
+                [
+                    {
+                        "node": "Authorize Telegram user",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Error Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Authorize Telegram user": {
+            "main": [
+                [
+                    {
+                        "node": "Send access email",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Error Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send access email": {
+            "main": [
+                [
+                    {
+                        "node": "Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "active": false,
+    "versionId": "16000000-0000-4000-8000-000000000001"
+}

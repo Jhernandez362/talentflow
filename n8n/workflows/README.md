@@ -19,6 +19,7 @@ Los nodos PostgreSQL usan placeholders `$1`, `$2` y `queryReplacement`. Ningún 
 | TF-ADMIN-11 | `POST /webhook/tf-admin-record-hr-review/admin/candidates/:id/reviews` |
 | TF-ADMIN-12 | `GET /webhook/admin/document-reviews` |
 | TF-ADMIN-13 | `POST /webhook/tf-admin-manual-analysis/admin/document-reviews/:id/manual-analysis` |
+| TF-ADMIN-16 | `POST /webhook/admin/telegram-users` |
 
 Las credenciales se guardan exclusivamente en Credentials de n8n y no en los exports.
 Los endpoints con `:id` incluyen el `webhookId` descriptivo porque n8n lo
@@ -169,15 +170,48 @@ actualizar, eliminar ni modificar el esquema. Prompt formal en
 
 Nunca se valida por `username` (puede cambiar). Antes de procesar cualquier
 mensaje, `TF-BOT-00` consulta `vw_bot_authorized_users` por `telegram_user_id`
-numerico. Para autorizar un usuario, un admin inserta en
-`talentflow.bot_authorized_telegram_users` (tabla administrada por la app
-principal, no por el bot):
+numerico. La tabla `talentflow.bot_authorized_telegram_users` la administra
+la app principal, no el bot (el rol `talentflow_bot_readonly` no tiene
+permiso de escritura sobre ella).
+
+Para autorizar un usuario puede ejecutarse el INSERT directamente:
 
 ```sql
 INSERT INTO talentflow.bot_authorized_telegram_users
   (telegram_user_id, hr_user_id, telegram_display_name, added_by)
 VALUES (123456789, '<hr_users.id>', 'Nombre visible', '<hr_users.id>');
 ```
+
+o, de forma equivalente, invocar `TF-ADMIN-16-authorize-telegram-user.json`
+(`POST /webhook/admin/telegram-users`), que envuelve la funcion PL/pgSQL
+`talentflow.admin_authorize_telegram_user` (migracion 028). Valida al actor
+contra `talentflow.hr_users` igual que el resto de `TF-ADMIN-*`, resuelve el
+`hr_user_id` y el nombre a mostrar a partir del correo (`email`) y hace
+upsert por `telegram_user_id` (reactiva a `is_active = true` si ya existia).
+Body esperado:
+
+```json
+{
+  "actorId": "<hr_users.id del que autoriza>",
+  "email": "<hr_users.email del usuario a autorizar>",
+  "telegramUserId": 123456789
+}
+```
+
+Este es el endpoint que consume la seccion "Configuracion" del panel
+administrativo (`/admin/configuracion`) para dar de alta usuarios de
+Telegram sin tocar la base de datos directamente.
+
+Usa la credencial PostgreSQL normal de escritura (`talentflow_app`), no la
+de solo lectura del bot. Requiere `postgres` configurado y el workflow
+activo para exponer el webhook.
+
+Tras autorizar, el nodo `Send access email` (`n8n-nodes-base.emailSend`)
+notifica al correo ingresado que se le otorgo acceso al bot, indicando el
+`telegramUserId` autorizado. Requiere una credencial SMTP asignada en ese
+nodo; si el envio falla (`onError: continueRegularOutput`) la autorizacion
+en base de datos ya quedo aplicada y el webhook igual responde `200` — un
+problema de correo nunca revierte ni oculta el otorgamiento de acceso.
 
 ### Configuracion requerida (credenciales, nunca en el repo)
 
